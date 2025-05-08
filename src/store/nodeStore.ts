@@ -1,4 +1,3 @@
-
 import { create } from "zustand";
 import { 
   Connection,
@@ -119,7 +118,8 @@ export const useNodeStore = create<RFState>((set, get) => ({
       id: `e${connection.source}-${connection.target}`, 
       type: 'smoothstep', 
       animated: true 
-    };
+    } as Edge;
+    
     set({
       edges: addEdge(newEdge, get().edges),
     });

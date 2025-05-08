@@ -2,19 +2,20 @@
 import { create } from "zustand";
 import { useNodeStore } from "@/store/nodeStore";
 import { toast } from "sonner";
+import { Node, Edge, NodeChange, EdgeChange } from "@xyflow/react";
 
 type FlowHistoryState = {
   past: {
-    nodes: any[];
-    edges: any[];
+    nodes: Node[];
+    edges: Edge[];
   }[];
   future: {
-    nodes: any[];
-    edges: any[];
+    nodes: Node[];
+    edges: Edge[];
   }[];
   savedState: {
-    nodes: any[];
-    edges: any[];
+    nodes: Node[];
+    edges: Edge[];
   } | null;
 };
 
@@ -53,12 +54,19 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     
     if (savedState) {
       const nodeStore = useNodeStore.getState();
-      nodeStore.onNodesChange([
-        { type: 'replace', item: savedState.nodes },
-      ]);
-      nodeStore.onEdgesChange([
-        { type: 'replace', item: savedState.edges },
-      ]);
+      // Apply each node individually
+      savedState.nodes.forEach((node) => {
+        nodeStore.onNodesChange([
+          { type: 'replace', id: node.id, item: node },
+        ]);
+      });
+      
+      // Apply each edge individually
+      savedState.edges.forEach((edge) => {
+        nodeStore.onEdgesChange([
+          { type: 'replace', id: edge.id, item: edge },
+        ]);
+      });
     } else {
       // Try loading from localStorage in a real app
       const savedFlow = localStorage.getItem('flowState');
@@ -66,12 +74,20 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         try {
           const { nodes, edges } = JSON.parse(savedFlow);
           const nodeStore = useNodeStore.getState();
-          nodeStore.onNodesChange([
-            { type: 'replace', item: nodes },
-          ]);
-          nodeStore.onEdgesChange([
-            { type: 'replace', item: edges },
-          ]);
+          
+          // Apply nodes individually
+          nodes.forEach((node) => {
+            nodeStore.onNodesChange([
+              { type: 'replace', id: node.id, item: node },
+            ]);
+          });
+          
+          // Apply edges individually
+          edges.forEach((edge) => {
+            nodeStore.onEdgesChange([
+              { type: 'replace', id: edge.id, item: edge },
+            ]);
+          });
         } catch (e) {
           toast.error("Failed to load saved flow");
         }
@@ -126,12 +142,20 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       
       // Apply the previous state
       const nodeStore = useNodeStore.getState();
-      nodeStore.onNodesChange([
-        { type: 'replace', item: previous.nodes },
-      ]);
-      nodeStore.onEdgesChange([
-        { type: 'replace', item: previous.edges },
-      ]);
+      
+      // Apply nodes individually
+      previous.nodes.forEach((node) => {
+        nodeStore.onNodesChange([
+          { type: 'replace', id: node.id, item: node },
+        ]);
+      });
+      
+      // Apply edges individually
+      previous.edges.forEach((edge) => {
+        nodeStore.onEdgesChange([
+          { type: 'replace', id: edge.id, item: edge },
+        ]);
+      });
       
       return {
         past: newPast,
@@ -165,12 +189,20 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       
       // Apply the next state
       const nodeStore = useNodeStore.getState();
-      nodeStore.onNodesChange([
-        { type: 'replace', item: next.nodes },
-      ]);
-      nodeStore.onEdgesChange([
-        { type: 'replace', item: next.edges },
-      ]);
+      
+      // Apply nodes individually
+      next.nodes.forEach((node) => {
+        nodeStore.onNodesChange([
+          { type: 'replace', id: node.id, item: node },
+        ]);
+      });
+      
+      // Apply edges individually
+      next.edges.forEach((edge) => {
+        nodeStore.onEdgesChange([
+          { type: 'replace', id: edge.id, item: edge },
+        ]);
+      });
       
       return {
         past: newPast,
