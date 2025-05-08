@@ -114,7 +114,12 @@ export const useNodeStore = create<RFState>((set, get) => ({
   },
   
   onConnect: (connection: Connection) => {
-    const newEdge = { ...connection, id: `e${connection.source}-${connection.target}`, type: 'smoothstep', animated: true };
+    const newEdge = { 
+      ...connection, 
+      id: `e${connection.source}-${connection.target}`, 
+      type: 'smoothstep', 
+      animated: true 
+    };
     set({
       edges: addEdge(newEdge, get().edges),
     });

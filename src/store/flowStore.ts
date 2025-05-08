@@ -54,10 +54,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     if (savedState) {
       const nodeStore = useNodeStore.getState();
       nodeStore.onNodesChange([
-        { type: 'replace', items: savedState.nodes },
+        { type: 'replace', item: savedState.nodes },
       ]);
       nodeStore.onEdgesChange([
-        { type: 'replace', items: savedState.edges },
+        { type: 'replace', item: savedState.edges },
       ]);
     } else {
       // Try loading from localStorage in a real app
@@ -67,10 +67,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           const { nodes, edges } = JSON.parse(savedFlow);
           const nodeStore = useNodeStore.getState();
           nodeStore.onNodesChange([
-            { type: 'replace', items: nodes },
+            { type: 'replace', item: nodes },
           ]);
           nodeStore.onEdgesChange([
-            { type: 'replace', items: edges },
+            { type: 'replace', item: edges },
           ]);
         } catch (e) {
           toast.error("Failed to load saved flow");
@@ -127,10 +127,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       // Apply the previous state
       const nodeStore = useNodeStore.getState();
       nodeStore.onNodesChange([
-        { type: 'replace', items: previous.nodes },
+        { type: 'replace', item: previous.nodes },
       ]);
       nodeStore.onEdgesChange([
-        { type: 'replace', items: previous.edges },
+        { type: 'replace', item: previous.edges },
       ]);
       
       return {
@@ -166,10 +166,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       // Apply the next state
       const nodeStore = useNodeStore.getState();
       nodeStore.onNodesChange([
-        { type: 'replace', items: next.nodes },
+        { type: 'replace', item: next.nodes },
       ]);
       nodeStore.onEdgesChange([
-        { type: 'replace', items: next.edges },
+        { type: 'replace', item: next.edges },
       ]);
       
       return {
