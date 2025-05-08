@@ -54,10 +54,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     if (savedState) {
       const nodeStore = useNodeStore.getState();
       nodeStore.onNodesChange([
-        { type: 'reset', items: savedState.nodes },
+        { type: 'replace', items: savedState.nodes },
       ]);
       nodeStore.onEdgesChange([
-        { type: 'reset', items: savedState.edges },
+        { type: 'replace', items: savedState.edges },
       ]);
     } else {
       // Try loading from localStorage in a real app
@@ -67,10 +67,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           const { nodes, edges } = JSON.parse(savedFlow);
           const nodeStore = useNodeStore.getState();
           nodeStore.onNodesChange([
-            { type: 'reset', items: nodes },
+            { type: 'replace', items: nodes },
           ]);
           nodeStore.onEdgesChange([
-            { type: 'reset', items: edges },
+            { type: 'replace', items: edges },
           ]);
         } catch (e) {
           toast.error("Failed to load saved flow");
@@ -127,10 +127,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       // Apply the previous state
       const nodeStore = useNodeStore.getState();
       nodeStore.onNodesChange([
-        { type: 'reset', items: previous.nodes },
+        { type: 'replace', items: previous.nodes },
       ]);
       nodeStore.onEdgesChange([
-        { type: 'reset', items: previous.edges },
+        { type: 'replace', items: previous.edges },
       ]);
       
       return {
@@ -166,10 +166,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       // Apply the next state
       const nodeStore = useNodeStore.getState();
       nodeStore.onNodesChange([
-        { type: 'reset', items: next.nodes },
+        { type: 'replace', items: next.nodes },
       ]);
       nodeStore.onEdgesChange([
-        { type: 'reset', items: next.edges },
+        { type: 'replace', items: next.edges },
       ]);
       
       return {

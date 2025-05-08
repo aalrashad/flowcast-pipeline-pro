@@ -29,6 +29,12 @@ const EncoderNode = ({ id, data, selected }: EncoderNodeProps) => {
   const status = data.status || 'idle';
   const cpuLoad = data.cpuLoad || 0;
   
+  const getLoadColor = () => {
+    if (cpuLoad > 80) return 'bg-red-500';
+    if (cpuLoad > 60) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+  
   return (
     <div className={`px-4 py-2 shadow-md rounded-md w-60 bg-[#222532] border-2 ${selected ? 'border-white' : 'border-yellow-500'}`}>
       <div className="flex justify-between items-center">
@@ -69,9 +75,12 @@ const EncoderNode = ({ id, data, selected }: EncoderNodeProps) => {
               {cpuLoad}%
             </span>
           </div>
-          <Progress value={cpuLoad} 
+          <Progress 
+            value={cpuLoad} 
             className="h-1 bg-gray-700"
-            indicatorClassName={`${cpuLoad > 80 ? 'bg-red-500' : cpuLoad > 60 ? 'bg-yellow-500' : 'bg-green-500'}`}
+            style={{ 
+              '--progress-background': getLoadColor()
+            } as React.CSSProperties}
           />
         </div>
       )}

@@ -18,18 +18,29 @@ import { useNodeStore } from "@/store/nodeStore";
 import { toast } from "sonner";
 import { Slider } from "@/components/ui/slider";
 
+interface TempData {
+  label: string;
+  uri: string;
+  codec: string;
+  bitrate: number;
+  resolution: string;
+  frameRate: number;
+  protocol: string;
+  pattern: string;
+}
+
 const NodeDetailsPanel = () => {
   const { selectedNode, updateNodeData, setSelectedNode } = useNodeStore();
   
-  const [tempData, setTempData] = useState({
-    label: selectedNode?.data?.label || "",
-    uri: selectedNode?.data?.uri || "",
-    codec: selectedNode?.data?.codec || "h264",
-    bitrate: selectedNode?.data?.bitrate || 5000,
-    resolution: selectedNode?.data?.resolution || "1920x1080",
-    frameRate: selectedNode?.data?.frameRate || 30,
-    protocol: selectedNode?.data?.protocol || "SRT",
-    pattern: selectedNode?.data?.pattern || "Color Bars",
+  const [tempData, setTempData] = useState<TempData>({
+    label: selectedNode?.data?.label as string || "",
+    uri: selectedNode?.data?.uri as string || "",
+    codec: selectedNode?.data?.codec as string || "h264",
+    bitrate: selectedNode?.data?.bitrate as number || 5000,
+    resolution: selectedNode?.data?.resolution as string || "1920x1080",
+    frameRate: selectedNode?.data?.frameRate as number || 30,
+    protocol: selectedNode?.data?.protocol as string || "SRT",
+    pattern: selectedNode?.data?.pattern as string || "Color Bars",
   });
   
   if (!selectedNode) return null;
@@ -126,7 +137,7 @@ const NodeDetailsPanel = () => {
               <span className="text-xs text-muted-foreground">{tempData.bitrate} kbps</span>
             </div>
             <Slider
-              value={[tempData.bitrate as number]}
+              value={[tempData.bitrate]}
               min={500}
               max={50000}
               step={500}
