@@ -95,7 +95,7 @@ export class HealthMonitor {
     status: 'healthy' | 'degraded' | 'unhealthy';
     severity: 'low' | 'medium' | 'high' | 'critical';
     reason?: string;
-    metrics: Record<string, any>;
+    metrics: Record<string, number>;
   } {
     const stats = pipelineStatus.stats || {};
     // Convert all values to numbers when creating the metrics object
@@ -159,7 +159,7 @@ export class HealthMonitor {
    */
   getStreamHealth(streamId: string): {
     status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
-    metrics: Record<string, any>;
+    metrics: Record<string, number>;
   } {
     try {
       const pipelineId = `pipeline-${streamId}`;
