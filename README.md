@@ -1,73 +1,129 @@
-# Welcome to your Lovable project
 
-## Project info
+# GStreamer WebSocket Backend Server
 
-**URL**: https://lovable.dev/projects/7773bed9-e0d7-4cd1-ad23-8925fe1dba6b
+This is a Python-based backend server that provides a WebSocket interface to GStreamer pipelines.
 
-## How can I edit this code?
+## Prerequisites
 
-There are several ways of editing your application.
+- Python 3.7 or higher
+- GStreamer 1.0 with development files
+- PyGObject
+- websockets Python package
 
-**Use Lovable**
+## Installation
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/7773bed9-e0d7-4cd1-ad23-8925fe1dba6b) and start prompting.
+1. Install GStreamer:
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-tools
 
-Changes made via Lovable will be committed automatically to this repo.
+   # macOS with Homebrew
+   brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly
+   ```
 
-**Use your preferred IDE**
+2. Install Python dependencies:
+   ```bash
+   pip3 install -r requirements.txt
+   ```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Running the Server
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+```bash
+# Make the startup script executable
+chmod +x start_server.sh
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+# Start the server
+./start_server.sh
 ```
 
-**Edit a file directly in GitHub**
+Alternatively, you can run the server directly:
+```bash
+python3 server.py
+```
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Configuration
 
-**Use GitHub Codespaces**
+The server can be configured using the following environment variables:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- `GSTREAMER_WS_HOST`: Host to bind to (default: localhost)
+- `GSTREAMER_WS_PORT`: Port to listen on (default: 8080)
+- `GSTREAMER_WS_PATH`: WebSocket path (default: /gstreamer)
 
-## What technologies are used for this project?
+Example:
+```bash
+GSTREAMER_WS_PORT=9000 GSTREAMER_WS_HOST=0.0.0.0 python3 server.py
+```
 
-This project is built with:
+## WebSocket API
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+The server exposes the following WebSocket API:
 
-## How can I deploy this project?
+### Create Pipeline
 
-Simply open [Lovable](https://lovable.dev/projects/7773bed9-e0d7-4cd1-ad23-8925fe1dba6b) and click on Share -> Publish.
+```json
+{
+  "type": "createPipeline",
+  "payload": {
+    "id": "pipeline-123",
+    "description": "Example Pipeline",
+    "pipeline": {
+      "elements": [
+        {
+          "type": "videotestsrc",
+          "properties": {
+            "pattern": "ball"
+          }
+        },
+        {
+          "type": "autovideosink"
+        }
+      ]
+    }
+  }
+}
+```
 
-## Can I connect a custom domain to my Lovable project?
+### Start Pipeline
 
-Yes, you can!
+```json
+{
+  "type": "startPipeline",
+  "payload": {
+    "id": "pipeline-123"
+  }
+}
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### Stop Pipeline
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+```json
+{
+  "type": "stopPipeline",
+  "payload": {
+    "id": "pipeline-123"
+  }
+}
+```
+
+### Delete Pipeline
+
+```json
+{
+  "type": "deletePipeline",
+  "payload": {
+    "id": "pipeline-123"
+  }
+}
+```
+
+### Get Pipelines List
+
+```json
+{
+  "type": "getPipelines"
+}
+```
+
+## Health Monitoring
+
+The server monitors the health of all active pipelines and broadcasts stats updates every second.
