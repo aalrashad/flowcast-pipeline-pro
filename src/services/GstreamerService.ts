@@ -124,7 +124,8 @@ class GstreamerService {
     return this.createPipeline({
       description: `NDI Source: ${sourceName}`,
       elements: [
-        { type: 'ndisrc', properties: { ndi-name: sourceName } },
+        // Fix: Using camelCase for property names in JavaScript objects
+        { type: 'ndisrc', properties: { ndiName: sourceName } },
         { type: 'videoconvert' },
         { type: 'autovideosink' }
       ]

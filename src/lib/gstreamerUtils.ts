@@ -17,7 +17,9 @@ export const parsePipelineString = (pipelineString: string) => {
     parts.slice(1).forEach(prop => {
       const [key, value] = prop.split('=');
       if (key && value) {
-        properties[key] = value.replace(/"/g, '');
+        // Convert kebab-case to camelCase for JavaScript compatibility
+        const camelKey = key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+        properties[camelKey] = value.replace(/"/g, '');
       }
     });
     
@@ -35,11 +37,15 @@ export const generatePipelineString = (elements: any[]) => {
   return elements.map(element => {
     const props = Object.entries(element.properties || {})
       .map(([key, value]) => {
+        // Convert camelCase back to kebab-case for GStreamer CLI format
+        const kebabKey = key.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+        
         // Handle string values that need quotes
         const formattedValue = typeof value === 'string' && !value.match(/^\d+$/)
           ? `"${value}"`
           : value;
-        return `${key}=${formattedValue}`;
+          
+        return `${kebabKey}=${formattedValue}`;
       })
       .join(' ');
     
