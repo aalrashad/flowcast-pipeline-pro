@@ -53,6 +53,72 @@ export const generatePipelineString = (elements: any[]) => {
   }).join(' ! ');
 };
 
+// Validate pipeline elements against known GStreamer elements
+export const validatePipelineElements = (elements: any[]): { valid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+  const knownElementTypes = [
+    'videotestsrc', 'v4l2src', 'filesrc', 'udpsrc', 'tcpsrc', 'rtmpsrc', 'srtsrc', 
+    'ristrtpsrc', 'ndisrc', 'rtspsrc', 'webrtcsrc',
+    'videoconvert', 'audioresample', 'audioconvert',
+    'videoscale', 'videorate', 'audiorate',
+    'x264enc', 'x265enc', 'nvh264enc', 'vaapih264enc', 'vp8enc', 'vp9enc', 'av1enc',
+    'rtph264pay', 'rtpmp4gpay', 'rtpvp8pay', 'rtpvp9pay',
+    'flvmux', 'mp4mux', 'matroskamux', 'mpegtsmux',
+    'udpsink', 'tcpsink', 'rtmpsink', 'srtsink', 'filesink',
+    'autovideosink', 'autoaudiosink', 'glimagesink', 'xvimagesink',
+    'tee', 'queue', 'decodebin', 'parsebin', 'playbin', 'uridecodebin',
+    'h264parse', 'h265parse', 'mpegaudioparse', 'aacparse',
+    'avdec_h264', 'avdec_h265', 'avdec_aac', 'avdec_mp3',
+    'capsfilter', 'audiomixer', 'compositor'
+  ];
+
+  for (const element of elements) {
+    if (!knownElementTypes.includes(element.type)) {
+      errors.push(`Unknown GStreamer element type: ${element.type}`);
+    }
+    
+    // Validate required properties for specific elements
+    if (element.type === 'srtsrc' && !element.properties.uri) {
+      errors.push('srtsrc element requires uri property');
+    }
+    
+    if (element.type === 'rtmpsink' && !element.properties.location) {
+      errors.push('rtmpsink element requires location property');
+    }
+    
+    if (element.type === 'filesrc' && !element.properties.location) {
+      errors.push('filesrc element requires location property');
+    }
+  }
+  
+  return { valid: errors.length === 0, errors };
+};
+
+// Translate GStreamer error messages to user-friendly messages
+export const translateGstreamerError = (errorMessage: string): string => {
+  // Common GStreamer errors mapped to user-friendly messages
+  const errorMappings: Record<string, string> = {
+    'no such element': 'Missing GStreamer plugin. This element is not installed on the server.',
+    'could not link': 'Failed to connect elements. The output format may be incompatible with the input.',
+    'could not set to PLAYING': 'Failed to start pipeline. Check element connections and properties.',
+    'resource not found': 'Media resource not found. Check the file path or network URI.',
+    'pad link failed': 'Failed to link elements. The formats may be incompatible.',
+    'not-negotiated': 'Format negotiation failed between elements. Try adding a converter.',
+    'Internal data stream error': 'Stream error. There may be network connectivity issues.',
+    'Could not open resource': 'Failed to open media resource. Check permissions and availability.',
+  };
+
+  // Try to match the error with known patterns
+  for (const [pattern, friendlyMessage] of Object.entries(errorMappings)) {
+    if (errorMessage.includes(pattern)) {
+      return `${friendlyMessage} (${errorMessage})`;
+    }
+  }
+  
+  // Default to the original message if no match
+  return errorMessage;
+};
+
 // Common pipeline templates
 export const pipelineTemplates = {
   rtmpToScreen: 'rtmpsrc location=rtmp://example.com/live/stream ! flvdemux ! h264parse ! avdec_h264 ! videoconvert ! autovideosink',
@@ -81,4 +147,31 @@ export const getStatusDescription = (status: string): string => {
   };
   
   return statusMap[status] || 'Unknown status';
+};
+
+// Convert between frontend and backend pipeline formats
+export const convertToBackendPipeline = (elements: any[]): any => {
+  return {
+    elements: elements.map(element => ({
+      type: element.type,
+      properties: element.properties || {}
+    })),
+    options: {
+      latency: 500,
+      bufferSize: 8192,
+      reconnect: true,
+      reconnectDelay: 2000,
+      maxReconnects: 10
+    }
+  };
+};
+
+// Create serializable error object
+export const createErrorObject = (errorCode: string, message: string, details?: any) => {
+  return {
+    code: errorCode,
+    message,
+    details,
+    timestamp: new Date().toISOString()
+  };
 };

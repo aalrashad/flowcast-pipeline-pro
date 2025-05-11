@@ -1,8 +1,17 @@
 
 /**
  * GStreamer Service
- * Provides an interface to interact with GStreamer pipelines
+ * Provides an interface to interact with GStreamer pipelines via WebSocket
  */
+import wsClient from './WebSocketClient';
+import { 
+  parsePipelineString, 
+  generatePipelineString, 
+  validatePipelineElements,
+  translateGstreamerError,
+  convertToBackendPipeline,
+  createErrorObject
+} from '@/lib/gstreamerUtils';
 
 // Extended pipeline states to include more detailed connection states
 export type GstPipelineState = 
@@ -49,222 +58,315 @@ export interface GstPipelineOptions {
   }[];
 }
 
-// Mock implementation - in a real app, this would communicate with a backend
+// Status interface for public API
+export interface GstPipelineStatus {
+  state: GstPipelineState;
+  statusMessage: string;
+  isActive: boolean;
+  isConnected: boolean;
+  stats?: GstPipelineStats;
+}
+
 class GstreamerService {
-  private pipelines: GstPipeline[] = [];
-  private stateUpdateIntervals: Record<string, any> = {};
+  private pipelines: Map<string, GstPipeline> = new Map();
+  private statusCallbacks: Map<string, (status: GstPipelineStatus) => void> = new Map();
+  private connected: boolean = false;
+  private connectionPromise: Promise<void> | null = null;
+  
+  constructor() {
+    this.initializeWebSocketConnection();
+  }
+  
+  // Initialize WebSocket connection and message handlers
+  private async initializeWebSocketConnection(): Promise<void> {
+    if (this.connectionPromise) {
+      return this.connectionPromise;
+    }
+    
+    this.connectionPromise = new Promise<void>((resolve, reject) => {
+      // Set up WebSocket status handling
+      wsClient.onStatus((status, error) => {
+        if (status === 'connected') {
+          this.connected = true;
+          console.log('Connected to GStreamer backend');
+          resolve();
+          
+          // Request current pipeline status
+          wsClient.send('getPipelines', {});
+        } else if (status === 'disconnected' || status === 'error') {
+          this.connected = false;
+          console.error('Disconnected from GStreamer backend', error);
+          
+          // Update all pipelines to error state
+          this.pipelines.forEach((pipeline, id) => {
+            this.updatePipelineState(id, 'DISCONNECTED', 'Lost connection to GStreamer backend');
+          });
+        }
+      });
+      
+      // Set up message handlers
+      wsClient.on('pipelineCreated', this.handlePipelineCreated.bind(this));
+      wsClient.on('pipelineDeleted', this.handlePipelineDeleted.bind(this));
+      wsClient.on('pipelineStateChanged', this.handlePipelineStateChanged.bind(this));
+      wsClient.on('pipelineError', this.handlePipelineError.bind(this));
+      wsClient.on('pipelineStats', this.handlePipelineStats.bind(this));
+      wsClient.on('pipelinesList', this.handlePipelinesList.bind(this));
+      
+      // Connect to WebSocket
+      wsClient.connect().catch(error => {
+        console.error('Failed to connect to GStreamer backend', error);
+        reject(error);
+      });
+    });
+    
+    return this.connectionPromise;
+  }
+  
+  // Ensure we're connected to the WebSocket server
+  private async ensureConnected(): Promise<void> {
+    if (this.connected) {
+      return;
+    }
+    
+    try {
+      await this.initializeWebSocketConnection();
+    } catch (error) {
+      throw new Error('Cannot connect to GStreamer backend');
+    }
+  }
+  
+  // WebSocket event handlers
+  private handlePipelineCreated(data: any): void {
+    const { pipeline } = data;
+    if (!pipeline || !pipeline.id) return;
+    
+    // Store the pipeline data
+    this.pipelines.set(pipeline.id, {
+      ...pipeline,
+      lastStateChange: new Date()
+    });
+    
+    console.log(`Pipeline created: ${pipeline.id}`);
+  }
+  
+  private handlePipelineDeleted(data: any): void {
+    const { id } = data;
+    if (!id) return;
+    
+    // Remove the pipeline
+    this.pipelines.delete(id);
+    console.log(`Pipeline deleted: ${id}`);
+  }
+  
+  private handlePipelineStateChanged(data: any): void {
+    const { id, state, message } = data;
+    if (!id || !state) return;
+    
+    this.updatePipelineState(id, state as GstPipelineState, message);
+  }
+  
+  private handlePipelineError(data: any): void {
+    const { id, errorCode, errorMessage, details } = data;
+    if (!id) return;
+    
+    // Update pipeline with error information
+    const pipeline = this.pipelines.get(id);
+    if (pipeline) {
+      pipeline.state = 'ERROR';
+      pipeline.errorMessage = translateGstreamerError(errorMessage);
+      pipeline.lastStateChange = new Date();
+      
+      // Notify listeners
+      this.notifyStatusChanged(id);
+      
+      console.error(`Pipeline error (${id}): ${errorMessage}`, details);
+    }
+  }
+  
+  private handlePipelineStats(data: any): void {
+    const { id, stats } = data;
+    if (!id || !stats) return;
+    
+    // Update pipeline stats
+    const pipeline = this.pipelines.get(id);
+    if (pipeline) {
+      pipeline.stats = {
+        ...(pipeline.stats || {}),
+        ...stats
+      };
+      
+      // Notify listeners
+      this.notifyStatusChanged(id);
+    }
+  }
+  
+  private handlePipelinesList(data: any): void {
+    const { pipelines } = data;
+    if (!Array.isArray(pipelines)) return;
+    
+    // Replace current pipelines with the received list
+    this.pipelines.clear();
+    pipelines.forEach(pipeline => {
+      if (pipeline && pipeline.id) {
+        this.pipelines.set(pipeline.id, {
+          ...pipeline,
+          lastStateChange: new Date()
+        });
+      }
+    });
+    
+    console.log(`Received pipelines list: ${pipelines.length} pipelines`);
+  }
+  
+  // Update pipeline state and notify listeners
+  private updatePipelineState(id: string, state: GstPipelineState, message?: string): void {
+    const pipeline = this.pipelines.get(id);
+    if (pipeline) {
+      pipeline.state = state;
+      if (message) {
+        pipeline.errorMessage = message;
+      }
+      pipeline.lastStateChange = new Date();
+      
+      // Notify listeners
+      this.notifyStatusChanged(id);
+      
+      console.log(`Pipeline ${id} state changed to ${state}`);
+    }
+  }
+  
+  private notifyStatusChanged(pipelineId: string): void {
+    const callback = this.statusCallbacks.get(pipelineId);
+    if (callback) {
+      const status = this.getPipelineStatus(pipelineId);
+      callback(status);
+    }
+  }
+  
+  // Public API methods
   
   // Create a new pipeline
-  createPipeline(options: GstPipelineOptions): GstPipeline {
+  async createPipeline(options: GstPipelineOptions): Promise<GstPipeline> {
+    await this.ensureConnected();
+    
+    // Validate pipeline elements
+    const validationResult = validatePipelineElements(options.elements);
+    if (!validationResult.valid) {
+      throw new Error(`Invalid pipeline: ${validationResult.errors.join(', ')}`);
+    }
+    
     const id = options.id || `pipeline-${Date.now()}`;
     const description = options.description || `Pipeline ${id}`;
     
-    const elements: GstElement[] = options.elements.map((el, index) => ({
-      name: el.name || `${el.type}_${index}`,
-      type: el.type,
-      properties: el.properties || {}
-    }));
+    // Convert to backend format
+    const backendPipeline = convertToBackendPipeline(options.elements);
     
+    // Send create request
+    const success = wsClient.send('createPipeline', {
+      id,
+      description,
+      pipeline: backendPipeline
+    });
+    
+    if (!success) {
+      throw new Error('Failed to send pipeline creation request');
+    }
+    
+    // Create temporary pipeline object while waiting for confirmation
     const pipeline: GstPipeline = {
       id,
       description,
       state: 'NULL',
-      elements,
-      stats: {
-        bufferLevel: 0,
-        receivedBytes: 0,
-        framesReceived: 0,
-        framesDropped: 0,
-        bitrate: 0,
-        latency: 0,
-        jitter: 0
-      },
+      elements: options.elements.map((el, index) => ({
+        name: el.name || `${el.type}_${index}`,
+        type: el.type,
+        properties: el.properties || {}
+      })),
       lastStateChange: new Date()
     };
     
-    this.pipelines.push(pipeline);
-    console.log(`Created GStreamer pipeline: ${id}`);
+    // Store in local cache
+    this.pipelines.set(id, pipeline);
+    
     return pipeline;
   }
   
-  // Start a pipeline with simulated state transitions
-  startPipeline(pipelineId: string): boolean {
-    const pipeline = this.pipelines.find(p => p.id === pipelineId);
+  // Start a pipeline
+  async startPipeline(pipelineId: string): Promise<boolean> {
+    await this.ensureConnected();
+    
+    const pipeline = this.pipelines.get(pipelineId);
     if (!pipeline) {
-      console.error(`Pipeline ${pipelineId} not found`);
-      return false;
+      throw new Error(`Pipeline ${pipelineId} not found`);
     }
     
-    // Clear any existing interval
-    if (this.stateUpdateIntervals[pipelineId]) {
-      clearInterval(this.stateUpdateIntervals[pipelineId]);
-    }
+    // Update local state optimistically
+    this.updatePipelineState(pipelineId, 'CONNECTING');
     
-    // Update state to connecting first
-    pipeline.state = 'CONNECTING';
-    pipeline.lastStateChange = new Date();
-    
-    // Simulate connection process with state transitions
-    let connectionStep = 0;
-    this.stateUpdateIntervals[pipelineId] = setInterval(() => {
-      connectionStep++;
-      
-      switch (connectionStep) {
-        case 1:
-          pipeline.state = 'READY';
-          break;
-        case 2:
-          pipeline.state = 'BUFFERING';
-          // Start simulating receiving data
-          this.simulateDataReceiving(pipelineId);
-          break;
-        case 3:
-          // 80% chance of successful connection, 20% chance of reconnecting
-          if (Math.random() > 0.2) {
-            pipeline.state = 'RECEIVING';
-            console.log(`Pipeline ${pipelineId} now receiving`);
-          } else {
-            pipeline.state = 'RECONNECTING';
-            console.log(`Pipeline ${pipelineId} reconnecting...`);
-            // Reset to try again
-            connectionStep = 0;
-          }
-          break;
-        case 4:
-          // Only clear the interval once we're stable
-          if (pipeline.state === 'RECEIVING') {
-            clearInterval(this.stateUpdateIntervals[pipelineId]);
-            console.log(`Pipeline ${pipelineId} connection stabilized`);
-          }
-          break;
-        default:
-          break;
-      }
-      
-      pipeline.lastStateChange = new Date();
-    }, 1500);
-    
-    console.log(`Started pipeline: ${pipelineId}`);
-    return true;
-  }
-  
-  // Simulates receiving media data
-  private simulateDataReceiving(pipelineId: string): void {
-    const pipeline = this.pipelines.find(p => p.id === pipelineId);
-    if (!pipeline || !pipeline.stats) return;
-    
-    const statsInterval = setInterval(() => {
-      if (!pipeline.stats || pipeline.state === 'PAUSED' || 
-          pipeline.state === 'NULL' || pipeline.state === 'ERROR') {
-        clearInterval(statsInterval);
-        return;
-      }
-      
-      // Simulate receiving data with realistic variations
-      pipeline.stats.receivedBytes = (pipeline.stats.receivedBytes || 0) + Math.floor(Math.random() * 1000000);
-      pipeline.stats.framesReceived = (pipeline.stats.framesReceived || 0) + Math.floor(Math.random() * 30);
-      pipeline.stats.framesDropped = (pipeline.stats.framesDropped || 0) + (Math.random() > 0.9 ? 1 : 0);
-      pipeline.stats.bitrate = 2000 + Math.floor(Math.random() * 1000);
-      pipeline.stats.bufferLevel = Math.min(100, (pipeline.stats.bufferLevel || 0) + 
-        (Math.random() * 10) - (Math.random() > 0.7 ? 5 : 2));
-      pipeline.stats.latency = 20 + Math.floor(Math.random() * 10);
-      pipeline.stats.jitter = Math.random() * 5;
-      
-      // Occasionally simulate connection issues
-      if (Math.random() > 0.95) {
-        this.simulateConnectionIssue(pipelineId);
-      }
-    }, 1000);
-  }
-  
-  // Simulates temporary connection issues
-  private simulateConnectionIssue(pipelineId: string): void {
-    const pipeline = this.pipelines.find(p => p.id === pipelineId);
-    if (!pipeline) return;
-    
-    if (pipeline.state === 'RECEIVING') {
-      // 70% chance of just buffer underrun, 30% chance of reconnect
-      if (Math.random() > 0.3) {
-        console.log(`Pipeline ${pipelineId} buffer underrun`);
-        pipeline.state = 'BUFFERING';
-        pipeline.lastStateChange = new Date();
-        
-        // Recover after short delay
-        setTimeout(() => {
-          if (pipeline.state === 'BUFFERING') {
-            pipeline.state = 'RECEIVING';
-            pipeline.lastStateChange = new Date();
-            console.log(`Pipeline ${pipelineId} recovered from buffer underrun`);
-          }
-        }, 2000 + Math.random() * 3000);
-      } else {
-        console.log(`Pipeline ${pipelineId} connection lost, reconnecting...`);
-        pipeline.state = 'RECONNECTING';
-        pipeline.lastStateChange = new Date();
-        
-        // Attempt to reconnect
-        setTimeout(() => {
-          if (pipeline.state === 'RECONNECTING') {
-            pipeline.state = 'RECEIVING';
-            pipeline.lastStateChange = new Date();
-            console.log(`Pipeline ${pipelineId} reconnected successfully`);
-          }
-        }, 3000 + Math.random() * 5000);
-      }
-    }
+    // Send start request
+    return wsClient.send('startPipeline', { id: pipelineId });
   }
   
   // Stop a pipeline
-  stopPipeline(pipelineId: string): boolean {
-    const pipeline = this.pipelines.find(p => p.id === pipelineId);
+  async stopPipeline(pipelineId: string): Promise<boolean> {
+    await this.ensureConnected();
+    
+    const pipeline = this.pipelines.get(pipelineId);
+    if (!pipeline) {
+      throw new Error(`Pipeline ${pipelineId} not found`);
+    }
+    
+    // Update local state optimistically
+    this.updatePipelineState(pipelineId, 'PAUSED');
+    
+    // Send stop request
+    return wsClient.send('stopPipeline', { id: pipelineId });
+  }
+  
+  // Delete a pipeline
+  async deletePipeline(pipelineId: string): Promise<boolean> {
+    await this.ensureConnected();
+    
+    const pipeline = this.pipelines.get(pipelineId);
     if (!pipeline) {
       console.error(`Pipeline ${pipelineId} not found`);
       return false;
     }
     
-    // Clear any state update intervals
-    if (this.stateUpdateIntervals[pipelineId]) {
-      clearInterval(this.stateUpdateIntervals[pipelineId]);
-      delete this.stateUpdateIntervals[pipelineId];
+    // Send delete request
+    const success = wsClient.send('deletePipeline', { id: pipelineId });
+    
+    // Remove from local cache optimistically
+    if (success) {
+      this.pipelines.delete(pipelineId);
     }
     
-    pipeline.state = 'PAUSED';
-    pipeline.lastStateChange = new Date();
-    console.log(`Stopped pipeline: ${pipelineId}`);
-    
-    return true;
+    return success;
   }
   
-  // Delete a pipeline
-  deletePipeline(pipelineId: string): boolean {
-    // Stop the pipeline first to clean up intervals
-    this.stopPipeline(pipelineId);
+  // Subscribe to pipeline status updates
+  subscribeToPipeline(pipelineId: string, callback: (status: GstPipelineStatus) => void): () => void {
+    this.statusCallbacks.set(pipelineId, callback);
     
-    const initialLength = this.pipelines.length;
-    this.pipelines = this.pipelines.filter(p => p.id !== pipelineId);
-    
-    if (this.pipelines.length === initialLength) {
-      console.error(`Pipeline ${pipelineId} not found`);
-      return false;
-    }
-    
-    console.log(`Deleted pipeline: ${pipelineId}`);
-    return true;
+    // Return unsubscribe function
+    return () => {
+      this.statusCallbacks.delete(pipelineId);
+    };
   }
   
   // Get all pipelines
   getPipelines(): GstPipeline[] {
-    return [...this.pipelines];
+    return Array.from(this.pipelines.values());
   }
   
   // Get a specific pipeline
   getPipeline(pipelineId: string): GstPipeline | undefined {
-    return this.pipelines.find(p => p.id === pipelineId);
+    return this.pipelines.get(pipelineId);
   }
   
   // Get pipeline status details
   getPipelineStatus(pipelineId: string): GstPipelineStatus {
-    const pipeline = this.pipelines.find(p => p.id === pipelineId);
+    const pipeline = this.pipelines.get(pipelineId);
     if (!pipeline) {
       return {
         state: 'ERROR',
@@ -276,21 +378,25 @@ class GstreamerService {
     
     return {
       state: pipeline.state,
-      statusMessage: this.getStatusMessage(pipeline.state),
-      isActive: ['PLAYING', 'RECEIVING', 'BUFFERING', 'RECONNECTING'].includes(pipeline.state),
-      isConnected: ['RECEIVING'].includes(pipeline.state),
+      statusMessage: this.getStatusMessage(pipeline.state, pipeline.errorMessage),
+      isActive: ['PLAYING', 'RECEIVING', 'BUFFERING', 'RECONNECTING', 'CONNECTING'].includes(pipeline.state),
+      isConnected: ['RECEIVING', 'PLAYING'].includes(pipeline.state),
       stats: pipeline.stats
     };
   }
   
   // Helper to get human-readable status message
-  private getStatusMessage(state: GstPipelineState): string {
+  private getStatusMessage(state: GstPipelineState, errorMessage?: string): string {
+    if (state === 'ERROR' && errorMessage) {
+      return `Error: ${errorMessage}`;
+    }
+    
     switch (state) {
       case 'NULL': return 'Not initialized';
       case 'READY': return 'Ready to start';
       case 'PAUSED': return 'Paused';
       case 'PLAYING': return 'Playing';
-      case 'ERROR': return 'Error';
+      case 'ERROR': return 'Error occurred';
       case 'CONNECTING': return 'Connecting...';
       case 'RECONNECTING': return 'Reconnecting...';
       case 'RECEIVING': return 'Receiving stream';
@@ -301,41 +407,74 @@ class GstreamerService {
   }
   
   // Create an SRT source to encoder pipeline
-  createSrtSourcePipeline(sourceUri: string, encoderSettings: any): GstPipeline {
+  async createSrtSourcePipeline(sourceUri: string, encoderSettings: any): Promise<GstPipeline> {
+    const elements = [
+      { type: 'srtsrc', properties: { uri: sourceUri } },
+      { type: 'tsdemux', properties: {} },
+      { type: 'h264parse', properties: {} },
+      { type: 'x264enc', properties: { bitrate: encoderSettings.bitrate } },
+      { type: 'flvmux', properties: {} },
+      { type: 'rtmpsink', properties: { location: encoderSettings.outputUri } }
+    ];
+    
     return this.createPipeline({
-      description: `SRT Source to Encoder`,
-      elements: [
-        { type: 'srtsrc', properties: { uri: sourceUri } },
-        { type: 'decodebin' },
-        { type: 'videoconvert' },
-        { type: 'x264enc', properties: { bitrate: encoderSettings.bitrate } },
-        { type: 'rtmpsink', properties: { location: encoderSettings.outputUri } }
-      ]
+      description: `SRT Source (${sourceUri}) to Encoder`,
+      elements
     });
   }
   
   // Create an NDI source pipeline
-  createNdiSourcePipeline(sourceName: string): GstPipeline {
+  async createNdiSourcePipeline(sourceName: string): Promise<GstPipeline> {
+    const elements = [
+      // Using camelCase for property names in JavaScript objects
+      { type: 'ndisrc', properties: { ndiName: sourceName } },
+      { type: 'videoconvert', properties: {} },
+      { type: 'autovideosink', properties: {} }
+    ];
+    
     return this.createPipeline({
       description: `NDI Source: ${sourceName}`,
-      elements: [
-        // Using camelCase for property names in JavaScript objects
-        { type: 'ndisrc', properties: { ndiName: sourceName } },
-        { type: 'videoconvert' },
-        { type: 'autovideosink' }
-      ]
+      elements
     });
+  }
+  
+  // Parse pipeline string and create pipeline
+  async createPipelineFromString(pipelineString: string, description?: string): Promise<GstPipeline> {
+    const elements = parsePipelineString(pipelineString);
+    
+    return this.createPipeline({
+      description: description || `Pipeline from string`,
+      elements
+    });
+  }
+  
+  // Method to manually update stats for testing without a backend
+  // This is useful during development before backend is ready
+  simulateStats(pipelineId: string): void {
+    const pipeline = this.pipelines.get(pipelineId);
+    if (!pipeline) return;
+    
+    // Only simulate if in receiving or buffering state
+    if (!['RECEIVING', 'BUFFERING'].includes(pipeline.state)) return;
+    
+    pipeline.stats = pipeline.stats || {};
+    
+    // Simulate some realistic stats
+    pipeline.stats.bufferLevel = Math.min(100, (pipeline.stats.bufferLevel || 0) + (Math.random() * 10) - 2);
+    pipeline.stats.receivedBytes = (pipeline.stats.receivedBytes || 0) + Math.floor(Math.random() * 100000);
+    pipeline.stats.framesReceived = (pipeline.stats.framesReceived || 0) + Math.floor(Math.random() * 30);
+    pipeline.stats.bitrate = 2000 + Math.floor(Math.random() * 500);
+    
+    // Notify listeners
+    this.notifyStatusChanged(pipelineId);
+  }
+  
+  // Check if the service is connected to the backend
+  isConnected(): boolean {
+    return this.connected;
   }
 }
 
-// Status interface for public API
-export interface GstPipelineStatus {
-  state: GstPipelineState;
-  statusMessage: string;
-  isActive: boolean;
-  isConnected: boolean;
-  stats?: GstPipelineStats;
-}
-
+// Create singleton instance
 export const gstreamerService = new GstreamerService();
 export default gstreamerService;

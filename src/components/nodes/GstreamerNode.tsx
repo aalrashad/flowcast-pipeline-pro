@@ -6,9 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getNodeColor } from '@/lib/nodeUtils';
-import { pipelineTemplates } from '@/lib/gstreamerUtils';
+import { pipelineTemplates, validatePipelineElements } from '@/lib/gstreamerUtils';
 import { Progress } from '@/components/ui/progress';
 import { GstPipelineStatus } from '@/services/GstreamerService';
+import { toast } from 'sonner';
 
 interface GstreamerNodeProps {
   id: string;
@@ -27,9 +28,33 @@ interface GstreamerNodeProps {
 const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
   const [activeTab, setActiveTab] = useState("pipeline");
   const [customPipeline, setCustomPipeline] = useState(data.pipelineString || '');
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   
   const label = data.label || 'GStreamer';
   const status = data.status || 'idle';
+  
+  // Validate pipeline on change
+  useEffect(() => {
+    if (customPipeline) {
+      try {
+        // Import and use the utility functions
+        const { parsePipelineString, validatePipelineElements } = require('@/lib/gstreamerUtils');
+        
+        const elements = parsePipelineString(customPipeline);
+        const validation = validatePipelineElements(elements);
+        
+        if (!validation.valid) {
+          setValidationErrors(validation.errors);
+        } else {
+          setValidationErrors([]);
+        }
+      } catch (error) {
+        setValidationErrors(['Invalid pipeline syntax']);
+      }
+    } else {
+      setValidationErrors([]);
+    }
+  }, [customPipeline]);
   
   // Map status to visual indicators
   const getStatusColor = () => {
@@ -64,6 +89,12 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
   };
   
   const handlePlay = () => {
+    // Check for validation errors before starting
+    if (validationErrors.length > 0) {
+      toast.error(`Pipeline validation failed: ${validationErrors[0]}`);
+      return;
+    }
+    
     if (data.onStart) {
       data.onStart();
     }
@@ -91,11 +122,6 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
   
   const nodeColor = getNodeColor('gstreamer');
   const bufferLevel = data.pipelineStatus?.stats?.bufferLevel || 0;
-
-  // Poll for buffer level updates if the pipeline is active
-  useEffect(() => {
-    // This is already handled by the GStreamerService in a real implementation
-  }, []);
 
   return (
     <div className={`px-4 py-2 shadow-md rounded-md w-80 bg-[#222532] border-2 ${selected ? 'border-white' : 'border-[#ffcc00]'}`}>
@@ -132,6 +158,13 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
         </div>
       )}
       
+      {validationErrors.length > 0 && (
+        <div className="mt-1 text-xs text-red-400">
+          {validationErrors[0]}
+          {validationErrors.length > 1 && ` (+${validationErrors.length - 1} more errors)`}
+        </div>
+      )}
+      
       <div className="mt-2">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -140,7 +173,9 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
           </TabsList>
           <TabsContent value="pipeline" className="pt-2">
             <textarea
-              className="w-full h-20 bg-gray-900/30 text-xs p-1 rounded font-mono resize-none"
+              className={`w-full h-20 bg-gray-900/30 text-xs p-1 rounded font-mono resize-none ${
+                validationErrors.length > 0 ? 'border border-red-500' : ''
+              }`}
               value={customPipeline}
               onChange={handlePipelineChange}
               placeholder="Enter GStreamer pipeline"
@@ -168,7 +203,7 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
           size="sm" 
           className="bg-green-900/20 text-green-500 border-green-500 hover:bg-green-900/30"
           onClick={handlePlay}
-          disabled={['playing', 'connecting', 'reconnecting', 'buffering', 'receiving'].includes(status)}
+          disabled={['playing', 'connecting', 'reconnecting', 'buffering', 'receiving'].includes(status) || validationErrors.length > 0}
         >
           <Play className="w-4 h-4 mr-1" />
           Play
