@@ -1,3 +1,4 @@
+
 import { create } from "zustand";
 import { 
   Connection,
@@ -27,6 +28,10 @@ type RFState = {
   addNode: (type: string) => void;
   updateNodeData: (nodeId: string, data: NodeData) => void;
   setSelectedNode: (node: Node | null) => void;
+  updateNodeDimensions: (nodeId: string, width: number, height: number) => void;
+  duplicateConnection: (sourceId: string, targetIds: string[]) => void;
+  updateAudioMixer: (nodeId: string, sourceId: string, data: {level?: number, muted?: boolean}) => void;
+  selectNdiSource: (nodeId: string, sourceId: string, sourceName: string, ipAddress: string) => void;
 };
 
 const initialNodes: Node[] = [
@@ -50,9 +55,16 @@ const initialNodes: Node[] = [
       bitrate: 5000,
       resolution: '1920x1080',
       frameRate: 30,
-      status: 'idle'
+      status: 'idle',
+      width: 240,
+      height: 200,
+      audioSources: [
+        { id: 'main', label: 'Main Source', level: 75, muted: false },
+        { id: 'secondary', label: 'Secondary Source', level: 0, muted: true },
+      ]
     },
     position: { x: 350, y: 100 },
+    style: { width: 240, height: 200 },
   },
   {
     id: '3',
@@ -87,6 +99,22 @@ const initialNodes: Node[] = [
       status: 'offline'
     },
     position: { x: 600, y: 250 },
+  },
+  {
+    id: '6',
+    type: 'ndi-source',
+    data: { 
+      label: 'NDI Source',
+      sourceName: 'No source selected',
+      ipAddress: '',
+      status: 'offline',
+      ndiSources: [
+        { id: 'ndi1', name: 'Camera 1', ipAddress: '192.168.1.100' },
+        { id: 'ndi2', name: 'Camera 2', ipAddress: '192.168.1.101' },
+        { id: 'ndi3', name: 'Graphics', ipAddress: '192.168.1.102' },
+      ]
+    },
+    position: { x: 100, y: 400 },
   },
 ];
 
@@ -145,6 +173,20 @@ export const useNodeStore = create<RFState>((set, get) => ({
         uri: protocol === 'FILE' ? '/path/to/video.mp4' : `${protocol.toLowerCase()}://example.com:9000`,
         status: 'offline'
       };
+      
+      if (type === 'ndi-source') {
+        newNode.data = {
+          label: 'NDI Source',
+          sourceName: 'No source selected',
+          ipAddress: '',
+          status: 'offline',
+          ndiSources: [
+            { id: 'ndi1', name: 'Camera 1', ipAddress: '192.168.1.100' },
+            { id: 'ndi2', name: 'Camera 2', ipAddress: '192.168.1.101' },
+            { id: 'ndi3', name: 'Graphics', ipAddress: '192.168.1.102' },
+          ]
+        };
+      }
     } else if (type === 'encoder') {
       newNode.data = {
         label: 'Encoder',
@@ -152,7 +194,18 @@ export const useNodeStore = create<RFState>((set, get) => ({
         bitrate: 5000,
         resolution: '1920x1080',
         frameRate: 30,
-        status: 'idle'
+        status: 'idle',
+        width: 240,
+        height: 200,
+        audioSources: [
+          { id: 'main', label: 'Main Source', level: 75, muted: false },
+          { id: 'secondary', label: 'Secondary Source', level: 0, muted: true },
+        ]
+      };
+      
+      newNode.style = {
+        width: 240,
+        height: 200
       };
     } else if (type.includes('sink')) {
       const protocol = type.split('-')[0].toUpperCase();
@@ -197,4 +250,98 @@ export const useNodeStore = create<RFState>((set, get) => ({
   setSelectedNode: (node) => {
     set({ selectedNode: node });
   },
+  
+  updateNodeDimensions: (nodeId, width, height) => {
+    set({
+      nodes: get().nodes.map(node => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            style: {
+              ...node.style,
+              width,
+              height
+            },
+            data: {
+              ...node.data,
+              width,
+              height
+            }
+          };
+        }
+        return node;
+      }),
+    });
+  },
+  
+  duplicateConnection: (sourceId, targetIds) => {
+    const newEdges = [...get().edges];
+    
+    targetIds.forEach(targetId => {
+      const edgeId = `e${sourceId}-${targetId}`;
+      
+      // Check if this connection already exists
+      const connectionExists = newEdges.some(edge => 
+        edge.source === sourceId && edge.target === targetId
+      );
+      
+      if (!connectionExists) {
+        newEdges.push({
+          id: edgeId,
+          source: sourceId,
+          target: targetId,
+          type: 'smoothstep',
+          animated: true
+        } as Edge);
+      }
+    });
+    
+    set({ edges: newEdges });
+  },
+  
+  updateAudioMixer: (nodeId, sourceId, data) => {
+    set({
+      nodes: get().nodes.map(node => {
+        if (node.id === nodeId && node.data.audioSources) {
+          const updatedAudioSources = node.data.audioSources.map(source => {
+            if (source.id === sourceId) {
+              return {
+                ...source,
+                ...data
+              };
+            }
+            return source;
+          });
+          
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              audioSources: updatedAudioSources
+            }
+          };
+        }
+        return node;
+      })
+    });
+  },
+  
+  selectNdiSource: (nodeId, sourceId, sourceName, ipAddress) => {
+    set({
+      nodes: get().nodes.map(node => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              sourceName,
+              ipAddress,
+              status: 'connected'
+            }
+          };
+        }
+        return node;
+      })
+    });
+  }
 }));

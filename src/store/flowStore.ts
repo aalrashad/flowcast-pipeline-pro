@@ -1,4 +1,3 @@
-
 import { create } from "zustand";
 import { useNodeStore } from "@/store/nodeStore";
 import { toast } from "sonner";
@@ -216,7 +215,6 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
 // Add a listener to node changes to update history
 useNodeStore.subscribe(
-  (state) => [state.nodes, state.edges],
   () => {
     useFlowStore.getState().addToHistory();
   }

@@ -27,6 +27,8 @@ interface TempData {
   frameRate: number;
   protocol: string;
   pattern: string;
+  width: number;
+  height: number;
 }
 
 const NodeDetailsPanel = () => {
