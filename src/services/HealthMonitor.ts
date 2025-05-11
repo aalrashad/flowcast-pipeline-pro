@@ -99,10 +99,10 @@ export class HealthMonitor {
   } {
     const stats = pipelineStatus.stats || {};
     const metrics: Record<string, any> = {
-      bufferHealth: stats.bufferLevel || 100,
-      bitrate: stats.bitrate || 0,
-      framesDropped: stats.framesDropped || 0,
-      latency: stats.latency || 0
+      bufferHealth: Number(stats.bufferLevel || 100),
+      bitrate: Number(stats.bitrate || 0),
+      framesDropped: Number(stats.framesDropped || 0),
+      latency: Number(stats.latency || 0)
     };
     
     // Check for issues
@@ -120,7 +120,7 @@ export class HealthMonitor {
     
     // Dropped frames check
     if (stats.framesReceived && stats.framesDropped) {
-      const dropRate = (stats.framesDropped / (stats.framesReceived + stats.framesDropped)) * 100;
+      const dropRate = (Number(stats.framesDropped) / (Number(stats.framesReceived) + Number(stats.framesDropped))) * 100;
       metrics.dropRate = dropRate;
       
       if (dropRate > 20) {
