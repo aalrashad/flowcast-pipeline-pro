@@ -99,7 +99,7 @@ export class HealthMonitor {
   } {
     const stats = pipelineStatus.stats || {};
     // Convert all values to numbers when creating the metrics object
-    const metrics: Record<string, any> = {
+    const metrics: Record<string, number> = {
       bufferHealth: Number(stats.bufferLevel || 100),
       bitrate: Number(stats.bitrate || 0),
       framesDropped: Number(stats.framesDropped || 0),
