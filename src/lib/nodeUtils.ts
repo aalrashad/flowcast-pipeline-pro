@@ -1,4 +1,3 @@
-
 export const getNodeColor = (nodeType: string | undefined): string => {
   if (!nodeType) return '#9b87f5';
   
@@ -11,6 +10,8 @@ export const getNodeColor = (nodeType: string | undefined): string => {
     return '#f87171';
   } else if (nodeType === 'testgen') {
     return '#22d3ee';
+  } else if (nodeType === 'gstreamer') {
+    return '#ffcc00';
   }
   
   return '#9b87f5'; // Default color
@@ -31,6 +32,7 @@ export const getNodeIcon = (nodeType: string | undefined): string | null => {
     'rtmp-sink': 'Wifi',
     'file-sink': 'FileOutput',
     'testgen': 'Monitor',
+    'gstreamer': 'Terminal'
   };
   
   return iconMap[nodeType] || null;

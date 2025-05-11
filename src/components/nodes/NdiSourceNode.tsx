@@ -1,11 +1,10 @@
-
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Cast, Search } from 'lucide-react';
+import { Cast, Search, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getNodeColor } from '@/lib/nodeUtils';
-import { useState } from 'react';
+import { ndiDiscoveryService, NdiSource } from '@/services/NdiDiscoveryService';
 
 interface NdiSourceNodeProps {
   id: string;
@@ -24,24 +23,43 @@ interface NdiSourceNodeProps {
 const NdiSourceNode = ({ id, data, selected }: NdiSourceNodeProps) => {
   const [isSearching, setIsSearching] = useState(false);
   const [showSources, setShowSources] = useState(false);
+  const [discoveredSources, setDiscoveredSources] = useState<NdiSource[]>([]);
   
   const label = data.label || 'NDI Source';
   const sourceName = data.sourceName || 'No source selected';
   const ipAddress = data.ipAddress || '';
   const status = data.status || 'offline';
   
-  // Mock NDI sources - in a real app, this would come from a backend discovery service
-  const ndiSources = data.ndiSources || [
-    { id: 'ndi1', name: 'Camera 1', ipAddress: '192.168.1.100' },
-    { id: 'ndi2', name: 'Camera 2', ipAddress: '192.168.1.101' },
-    { id: 'ndi3', name: 'Graphics', ipAddress: '192.168.1.102' },
-  ];
+  useEffect(() => {
+    // Initialize NDI sources from either the discovery service or props
+    setDiscoveredSources(ndiDiscoveryService.getSources());
+    
+    // Set up listener for NDI source discovery updates
+    ndiDiscoveryService.addListener((sources) => {
+      setDiscoveredSources(sources);
+    });
+    
+    return () => {
+      // Clean up listener when component unmounts
+      ndiDiscoveryService.removeListener(setDiscoveredSources);
+    };
+  }, []);
   
   const handleSearch = () => {
     setIsSearching(true);
+    
+    // Start NDI discovery
+    ndiDiscoveryService.startDiscovery();
+    
     setTimeout(() => {
       setIsSearching(false);
       setShowSources(true);
+      
+      // Stop discovery after a short period to save resources
+      // In a real app, you might want to keep discovery running longer or have a stop button
+      setTimeout(() => {
+        ndiDiscoveryService.stopDiscovery();
+      }, 10000);
     }, 1500);
   };
   
@@ -85,7 +103,11 @@ const NdiSourceNode = ({ id, data, selected }: NdiSourceNodeProps) => {
             onClick={handleSearch}
             disabled={isSearching}
           >
-            <Search className="h-3 w-3" />
+            {isSearching ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Search className="h-3 w-3" />
+            )}
           </Button>
         </div>
         
@@ -97,22 +119,29 @@ const NdiSourceNode = ({ id, data, selected }: NdiSourceNodeProps) => {
         
         {isSearching && (
           <div className="text-xs text-center py-1">
-            Searching for NDI sources...
+            Discovering NDI sources...
           </div>
         )}
         
-        {showSources && (
+        {showSources && discoveredSources.length > 0 && (
           <div className="bg-gray-900/50 rounded p-1 mt-2 max-h-32 overflow-y-auto">
             <div className="text-xs font-semibold mb-1">Available Sources:</div>
-            {ndiSources.map(source => (
+            {discoveredSources.map(source => (
               <div 
                 key={source.id}
-                className="text-xs p-1 hover:bg-gray-800/50 rounded cursor-pointer"
+                className="text-xs p-1 hover:bg-gray-800/50 rounded cursor-pointer flex justify-between"
                 onClick={() => handleSelectSource(source.id, source.name, source.ipAddress)}
               >
-                {source.name} ({source.ipAddress})
+                <span>{source.name}</span>
+                <span className="text-gray-400">{source.ipAddress}</span>
               </div>
             ))}
+          </div>
+        )}
+        
+        {showSources && discoveredSources.length === 0 && (
+          <div className="text-xs text-center py-1">
+            No NDI sources found
           </div>
         )}
       </div>

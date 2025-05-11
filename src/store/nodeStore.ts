@@ -11,6 +11,7 @@ import {
   addEdge,
 } from "@xyflow/react";
 import { v4 as uuidv4 } from "uuid";
+import gstreamerService, { GstPipeline } from "@/services/GstreamerService";
 
 type NodeData = {
   label?: string;
@@ -30,6 +31,7 @@ type RFState = {
   nodes: Node[];
   edges: Edge[];
   selectedNode: Node | null;
+  pipelines: Record<string, GstPipeline>;
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
@@ -44,6 +46,9 @@ type RFState = {
   deleteEdge: (edgeId: string) => void;
   addExternalAudioToEncoder: (encoderNodeId: string, sourceNodeId: string, sourceLabel: string, sourceType: string) => void;
   removeAudioSource: (encoderNodeId: string, sourceId: string) => void;
+  createGstPipeline: (sourceNodeId: string, encoderNodeId: string) => void;
+  startGstPipeline: (nodeId: string) => void;
+  stopGstPipeline: (nodeId: string) => void;
 };
 
 const initialNodes: Node[] = [
@@ -139,6 +144,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
   nodes: initialNodes,
   edges: initialEdges,
   selectedNode: null,
+  pipelines: {},
   
   onNodesChange: (changes) => {
     set({
@@ -348,13 +354,26 @@ export const useNodeStore = create<RFState>((set, get) => ({
     set({
       nodes: get().nodes.map(node => {
         if (node.id === nodeId) {
+          // Create a GStreamer NDI pipeline when selecting a source
+          const pipelineId = `ndi-${nodeId}-${sourceId}`;
+          const pipeline = gstreamerService.createNdiSourcePipeline(sourceName);
+          
+          // Store the pipeline reference
+          set(state => ({
+            pipelines: {
+              ...state.pipelines,
+              [nodeId]: pipeline
+            }
+          }));
+          
           return {
             ...node,
             data: {
               ...node.data,
               sourceName,
               ipAddress,
-              status: 'connected'
+              status: 'connected',
+              pipelineId: pipeline.id
             }
           };
         }
@@ -364,10 +383,18 @@ export const useNodeStore = create<RFState>((set, get) => ({
   },
   
   deleteNode: (nodeId) => {
-    // Remove the node
-    const updatedNodes = get().nodes.filter(node => node.id !== nodeId);
+    // Remove any associated GStreamer pipelines
+    if (get().pipelines[nodeId]) {
+      gstreamerService.deletePipeline(get().pipelines[nodeId].id);
+      
+      // Remove pipeline from state
+      const updatedPipelines = {...get().pipelines};
+      delete updatedPipelines[nodeId];
+      set({ pipelines: updatedPipelines });
+    }
     
-    // Also remove any edges connected to this node
+    // Remove the node and connected edges
+    const updatedNodes = get().nodes.filter(node => node.id !== nodeId);
     const updatedEdges = get().edges.filter(
       edge => edge.source !== nodeId && edge.target !== nodeId
     );
@@ -375,7 +402,6 @@ export const useNodeStore = create<RFState>((set, get) => ({
     set({
       nodes: updatedNodes,
       edges: updatedEdges,
-      // If the deleted node was selected, clear selection
       selectedNode: get().selectedNode?.id === nodeId ? null : get().selectedNode
     });
   },
@@ -448,5 +474,103 @@ export const useNodeStore = create<RFState>((set, get) => ({
         return node;
       })
     });
+  },
+  
+  createGstPipeline: (sourceNodeId, encoderNodeId) => {
+    const nodes = get().nodes;
+    const sourceNode = nodes.find(node => node.id === sourceNodeId);
+    const encoderNode = nodes.find(node => node.id === encoderNodeId);
+    
+    if (!sourceNode || !encoderNode) {
+      console.error('Source or encoder node not found');
+      return;
+    }
+    
+    let pipeline: GstPipeline | null = null;
+    
+    // Create different pipelines based on source type
+    if (sourceNode.type === 'srt-source' && sourceNode.data?.uri) {
+      pipeline = gstreamerService.createSrtSourcePipeline(
+        sourceNode.data.uri,
+        {
+          bitrate: encoderNode.data?.bitrate || 5000,
+          outputUri: 'rtmp://example.com/live/stream'
+        }
+      );
+    } else if (sourceNode.type === 'ndi-source' && sourceNode.data?.sourceName) {
+      pipeline = gstreamerService.createNdiSourcePipeline(sourceNode.data.sourceName);
+    }
+    
+    if (pipeline) {
+      // Store the pipeline reference
+      set(state => ({
+        pipelines: {
+          ...state.pipelines,
+          [sourceNodeId]: pipeline as GstPipeline
+        },
+        nodes: state.nodes.map(node => {
+          if (node.id === sourceNodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                pipelineId: pipeline?.id
+              }
+            };
+          }
+          return node;
+        })
+      }));
+    }
+  },
+  
+  startGstPipeline: (nodeId) => {
+    const pipeline = get().pipelines[nodeId];
+    if (!pipeline) {
+      console.error(`No pipeline found for node ${nodeId}`);
+      return;
+    }
+    
+    if (gstreamerService.startPipeline(pipeline.id)) {
+      set({
+        nodes: get().nodes.map(node => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                status: 'connected'
+              }
+            };
+          }
+          return node;
+        })
+      });
+    }
+  },
+  
+  stopGstPipeline: (nodeId) => {
+    const pipeline = get().pipelines[nodeId];
+    if (!pipeline) {
+      console.error(`No pipeline found for node ${nodeId}`);
+      return;
+    }
+    
+    if (gstreamerService.stopPipeline(pipeline.id)) {
+      set({
+        nodes: get().nodes.map(node => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                status: 'offline'
+              }
+            };
+          }
+          return node;
+        })
+      });
+    }
   }
 }));

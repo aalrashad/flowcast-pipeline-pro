@@ -17,6 +17,7 @@ import EncoderNodeWithAudio from '@/components/nodes/EncoderNodeWithAudio';
 import SinkNode from '@/components/nodes/SinkNode';
 import TestGenNode from '@/components/nodes/TestGenNode';
 import NdiSourceNode from '@/components/nodes/NdiSourceNode';
+import GstreamerNode from '@/components/nodes/GstreamerNode';
 import { toast } from 'sonner';
 import FileBrowser from '@/components/FileBrowser';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ const nodeTypes: NodeTypes = {
   'rtmp-sink': SinkNode,
   'file-sink': SinkNode,
   testgen: TestGenNode,
+  gstreamer: GstreamerNode,
 };
 
 const FlowCanvas = () => {
@@ -55,7 +57,10 @@ const FlowCanvas = () => {
     deleteNode,
     deleteEdge,
     addExternalAudioToEncoder,
-    removeAudioSource
+    removeAudioSource,
+    startGstPipeline,
+    stopGstPipeline,
+    createGstPipeline
   } = useNodeStore();
   
   const reactFlowInstance = useReactFlow();
@@ -73,10 +78,21 @@ const FlowCanvas = () => {
 
   const onNodeDoubleClick = useCallback((_, node) => {
     if (node.type === 'ndi-source') {
-      // Handle NDI source discovery/selection logic
+      // Auto-start NDI discovery on double click
+      const ndiNode = document.querySelector(`[data-id="${node.id}"] button`);
+      if (ndiNode) {
+        (ndiNode as HTMLButtonElement).click();
+      }
       return;
     }
-  }, []);
+    
+    if (node.type === 'gstreamer') {
+      // Auto-play GStreamer pipeline on double click
+      startGstPipeline(node.id);
+      toast.success('Starting GStreamer pipeline');
+      return;
+    }
+  }, [startGstPipeline]);
 
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
@@ -145,9 +161,20 @@ const FlowCanvas = () => {
   const handleConnect = useCallback((params) => {
     if (validateConnection(params)) {
       onConnect(params);
+      
+      // If connecting a source to an encoder, create a GStreamer pipeline
+      const sourceNode = nodes.find(n => n.id === params.source);
+      const targetNode = nodes.find(n => n.id === params.target);
+      
+      if (sourceNode && targetNode && 
+          (sourceNode.type?.includes('source') || sourceNode.type === 'testgen') && 
+          targetNode.type === 'encoder') {
+        createGstPipeline(sourceNode.id, targetNode.id);
+      }
+      
       toast.success("Connection established");
     }
-  }, [validateConnection, onConnect]);
+  }, [validateConnection, onConnect, nodes, createGstPipeline]);
   
   const handleFileSelect = (filePath: string) => {
     if (fileSelectedNodeId) {
@@ -183,8 +210,22 @@ const FlowCanvas = () => {
     removeAudioSource(encoderNodeId, sourceId);
     toast.success("Removed audio source");
   };
+  
+  const handleStartGstreamer = (nodeId: string) => {
+    startGstPipeline(nodeId);
+    toast.success("Started GStreamer pipeline");
+  };
+  
+  const handleStopGstreamer = (nodeId: string) => {
+    stopGstPipeline(nodeId);
+    toast.success("Stopped GStreamer pipeline");
+  };
+  
+  const handleUpdateGstreamerPipeline = (nodeId: string, pipeline: string) => {
+    updateNodeData(nodeId, { pipelineString: pipeline });
+  };
 
-  // Process nodes to find available audio sources for each encoder
+  // Process nodes to add event handlers and dynamic data
   const processedNodes = nodes.map(node => {
     if (node.type === 'ndi-source') {
       return {
@@ -193,6 +234,19 @@ const FlowCanvas = () => {
           ...node.data,
           onSourceSelect: (sourceId: string, sourceName: string, ipAddress: string) => 
             handleNdiSourceSelect(node.id, sourceId, sourceName, ipAddress)
+        }
+      };
+    }
+    
+    if (node.type === 'gstreamer') {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          onStart: () => handleStartGstreamer(node.id),
+          onStop: () => handleStopGstreamer(node.id),
+          onPipelineUpdate: (pipeline: string) => 
+            handleUpdateGstreamerPipeline(node.id, pipeline)
         }
       };
     }
@@ -287,11 +341,13 @@ const FlowCanvas = () => {
           nodeStrokeColor={(n) => {
             if (n.type?.includes('source')) return '#4ade80';
             if (n.type === 'encoder') return '#facc15';
+            if (n.type === 'gstreamer') return '#ffcc00';
             return '#f87171';
           }}
           nodeColor={(n) => {
             if (n.type?.includes('source')) return '#4ade8060';
             if (n.type === 'encoder') return '#facc1560';
+            if (n.type === 'gstreamer') return '#ffcc0060';
             return '#f8717160';
           }}
           maskColor="#1A1F2C80"
