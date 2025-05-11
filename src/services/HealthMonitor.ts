@@ -1,4 +1,3 @@
-
 /**
  * Health Monitor Service
  * Monitors the health and performance of running streams
@@ -6,24 +5,56 @@
 
 import gstreamerService from './GstreamerService';
 
+// Type Definitions
+interface PipelineStatus {
+  stats?: {
+    [key: string]: string | number | undefined;
+    bufferHealth?: string | number;
+    bitrate?: string | number;
+    framesDropped?: string | number;
+    framesReceived?: string | number;
+    latency?: string | number;
+  };
+}
+
+type HealthStatus = 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
+type SeverityLevel = 'low' | 'medium' | 'high' | 'critical';
+
+interface HealthMetrics {
+  status: HealthStatus;
+  severity: SeverityLevel;
+  reason?: string;
+  metrics: Record<string, number>;
+}
+
+type HealthCallback = (streamId: string, healthData: HealthMetrics) => void;
+
 export class HealthMonitor {
   private streamIds: Set<string> = new Set();
   private checkInterval: number;
   private timer: NodeJS.Timeout | null = null;
-  private callbacks: Array<(streamId: string, healthData: any) => void> = [];
+  private callbacks: HealthCallback[] = [];
   
   constructor(checkInterval: number = 5000) {
+    if (checkInterval <= 0) {
+      throw new Error('Check interval must be positive');
+    }
     this.checkInterval = checkInterval;
   }
   
   /**
    * Start monitoring
    */
-  start(callback: (streamId: string, healthData: any) => void): void {
+  start(callback: HealthCallback): void {
+    if (typeof callback !== 'function') {
+      throw new Error('Callback must be a function');
+    }
+    
     this.callbacks.push(callback);
     
     if (!this.timer) {
       this.timer = setInterval(() => this.checkStreamHealth(), this.checkInterval);
+      process.nextTick(() => this.checkStreamHealth()); // Immediate first check
     }
   }
   
@@ -35,12 +66,16 @@ export class HealthMonitor {
       clearInterval(this.timer);
       this.timer = null;
     }
+    this.callbacks = [];
   }
   
   /**
    * Register a stream for monitoring
    */
   registerStream(streamId: string): void {
+    if (!streamId || typeof streamId !== 'string') {
+      throw new Error('Invalid streamId');
+    }
     this.streamIds.add(streamId);
   }
   
@@ -56,11 +91,7 @@ export class HealthMonitor {
    */
   private checkStreamHealth(): void {
     this.streamIds.forEach(streamId => {
-      try {
-        this.checkSingleStream(streamId);
-      } catch (error) {
-        console.error(`Error checking health for stream ${streamId}:`, error);
-      }
+      this.checkSingleStream(streamId);
     });
   }
   
@@ -68,90 +99,84 @@ export class HealthMonitor {
    * Check health of a single stream
    */
   private checkSingleStream(streamId: string): void {
-    const pipelineId = `pipeline-${streamId}`;
-    const pipelineStatus = gstreamerService.getPipelineStatus(pipelineId);
-    
-    if (!pipelineStatus) return;
-    
-    // Calculate health metrics
-    const healthData = this.calculateHealthMetrics(pipelineStatus);
-    
-    // Notify callbacks if there are issues
-    if (healthData.status !== 'healthy') {
-      this.callbacks.forEach(callback => {
-        try {
-          callback(streamId, healthData);
-        } catch (error) {
-          console.error('Error in health monitor callback:', error);
-        }
-      });
+    try {
+      if (!this.streamIds.has(streamId)) return;
+      
+      const pipelineId = `pipeline-${streamId}`;
+      const pipelineStatus = gstreamerService.getPipelineStatus(pipelineId);
+      
+      if (!pipelineStatus) return;
+      
+      const healthData = this.calculateHealthMetrics(pipelineStatus);
+      this.notifyCallbacks(streamId, healthData);
+    } catch (error) {
+      console.error(`Error checking health for stream ${streamId}:`, error);
     }
   }
   
   /**
    * Calculate health metrics from pipeline status
    */
-  private calculateHealthMetrics(pipelineStatus: any): {
-    status: 'healthy' | 'degraded' | 'unhealthy';
-    severity: 'low' | 'medium' | 'high' | 'critical';
-    reason?: string;
-    metrics: Record<string, number>;
-  } {
+  private calculateHealthMetrics(pipelineStatus: PipelineStatus): HealthMetrics {
     const stats = pipelineStatus.stats || {};
-    // Convert all values to numbers when creating the metrics object
+    
+    // Convert all values to numbers safely
     const metrics: Record<string, number> = {
-      bufferHealth: Number(stats.bufferHealth || 100),
-      bitrate: Number(stats.bitrate || 0),
-      framesDropped: Number(stats.framesDropped || 0),
-      latency: Number(stats.latency || 0)
+      bufferHealth: this.safeNumber(stats.bufferHealth, 100),
+      bitrate: this.safeNumber(stats.bitrate, 0),
+      framesDropped: this.safeNumber(stats.framesDropped, 0),
+      latency: this.safeNumber(stats.latency, 0)
     };
     
+    // Calculate frame drop rate if possible
+    if (stats.framesReceived !== undefined) {
+      const received = this.safeNumber(stats.framesReceived, 0);
+      const dropped = metrics.framesDropped;
+      const totalFrames = received + dropped;
+      metrics.dropRate = totalFrames > 0 ? (dropped / totalFrames) * 100 : 0;
+    }
+    
     // Check for issues
-    const issues = [];
-    let severity: 'low' | 'medium' | 'high' | 'critical' = 'low';
+    const issues: string[] = [];
+    let severity: SeverityLevel = 'low';
     
     // Buffer health check
     if (metrics.bufferHealth < 10) {
-      issues.push('Critical buffer underrun');
+      issues.push(`Critical buffer underrun (${metrics.bufferHealth}%)`);
       severity = 'critical';
     } else if (metrics.bufferHealth < 30) {
-      issues.push('Low buffer level');
-      severity = Math.max(severity === 'low' ? 'medium' : severity, 'medium') as any;
+      issues.push(`Low buffer level (${metrics.bufferHealth}%)`);
+      severity = this.upgradeSeverity(severity, 'medium');
     }
     
-    // Dropped frames check
-    if (stats.framesReceived && stats.framesDropped) {
-      const framesReceived = Number(stats.framesReceived);
-      const framesDropped = Number(stats.framesDropped);
-      const dropRate = (framesDropped / (framesReceived + framesDropped)) * 100;
-      metrics.dropRate = dropRate;
-      
-      if (dropRate > 20) {
-        issues.push(`High frame drop rate (${dropRate.toFixed(1)}%)`);
-        severity = 'critical';
-      } else if (dropRate > 5) {
-        issues.push(`Elevated frame drop rate (${dropRate.toFixed(1)}%)`);
-        severity = Math.max(severity === 'low' ? 'high' : severity, 'high') as any;
+    // Frame drop rate check
+    if (metrics.dropRate !== undefined) {
+      if (metrics.dropRate > 20) {
+        issues.push(`High frame drop rate (${metrics.dropRate.toFixed(1)}%)`);
+        severity = this.upgradeSeverity(severity, 'critical');
+      } else if (metrics.dropRate > 5) {
+        issues.push(`Elevated frame drop rate (${metrics.dropRate.toFixed(1)}%)`);
+        severity = this.upgradeSeverity(severity, 'high');
       }
     }
     
     // Latency check
     if (metrics.latency > 5000) {
       issues.push(`High latency (${metrics.latency}ms)`);
-      severity = Math.max(severity === 'low' ? 'high' : severity, 'high') as any;
+      severity = this.upgradeSeverity(severity, 'high');
     } else if (metrics.latency > 2000) {
       issues.push(`Elevated latency (${metrics.latency}ms)`);
-      severity = Math.max(severity === 'low' ? 'medium' : severity, 'medium') as any;
+      severity = this.upgradeSeverity(severity, 'medium');
     }
     
     // Determine overall status
     const status = issues.length === 0 ? 'healthy' : 
-                  (severity === 'critical' || severity === 'high') ? 'unhealthy' : 'degraded';
+                  severity === 'critical' || severity === 'high' ? 'unhealthy' : 'degraded';
     
     return {
       status,
       severity,
-      reason: issues.join(', '),
+      reason: issues.join('; '),
       metrics
     };
   }
@@ -160,10 +185,14 @@ export class HealthMonitor {
    * Get health status for a specific stream
    */
   getStreamHealth(streamId: string): {
-    status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
+    status: HealthStatus;
     metrics: Record<string, number>;
   } {
     try {
+      if (!this.streamIds.has(streamId)) {
+        return { status: 'unknown', metrics: {} };
+      }
+      
       const pipelineId = `pipeline-${streamId}`;
       const pipelineStatus = gstreamerService.getPipelineStatus(pipelineId);
       
@@ -171,10 +200,45 @@ export class HealthMonitor {
         return { status: 'unknown', metrics: {} };
       }
       
-      return this.calculateHealthMetrics(pipelineStatus);
+      const { status, metrics } = this.calculateHealthMetrics(pipelineStatus);
+      return { status, metrics };
     } catch (error) {
       console.error(`Error getting health for stream ${streamId}:`, error);
       return { status: 'unknown', metrics: {} };
     }
+  }
+  
+  /**
+   * Safely convert to number
+   */
+  private safeNumber(value: string | number | undefined, defaultValue: number): number {
+    if (value === undefined) return defaultValue;
+    const num = Number(value);
+    return isNaN(num) ? defaultValue : num;
+  }
+  
+  /**
+   * Upgrade severity level while maintaining the highest level
+   */
+  private upgradeSeverity(current: SeverityLevel, proposed: SeverityLevel): SeverityLevel {
+    const levels: SeverityLevel[] = ['low', 'medium', 'high', 'critical'];
+    const currentIndex = levels.indexOf(current);
+    const proposedIndex = levels.indexOf(proposed);
+    return levels[Math.max(currentIndex, proposedIndex)];
+  }
+  
+  /**
+   * Notify all registered callbacks
+   */
+  private notifyCallbacks(streamId: string, healthData: HealthMetrics): void {
+    if (healthData.status === 'healthy') return;
+    
+    this.callbacks.forEach(callback => {
+      try {
+        callback(streamId, healthData);
+      } catch (error) {
+        console.error('Error in health monitor callback:', error);
+      }
+    });
   }
 }
