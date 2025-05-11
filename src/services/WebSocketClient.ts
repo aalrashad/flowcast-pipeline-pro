@@ -19,6 +19,9 @@ class WebSocketClient {
   private messageQueue: Array<{ type: string, payload: any, messageId?: string }> = [];
   private connectionTimeout: number = 10000; // 10 seconds
   private connectionTimeoutTimer: number | null = null;
+  private pingInterval: number | null = null;
+  private lastPongTime: number = 0;
+  private pingTimeoutMs: number = 15000; // 15 seconds
   
   constructor(url: string) {
     this.url = url;
@@ -56,6 +59,10 @@ class WebSocketClient {
           this.reconnectAttempts = 0;
           this.notifyStatusChange('connected');
           
+          // Start ping interval
+          this.lastPongTime = Date.now();
+          this.startPingInterval();
+          
           // Send any queued messages
           this.flushMessageQueue();
           
@@ -70,6 +77,9 @@ class WebSocketClient {
             clearTimeout(this.connectionTimeoutTimer);
             this.connectionTimeoutTimer = null;
           }
+          
+          // Clear ping interval
+          this.stopPingInterval();
           
           this.notifyStatusChange('disconnected');
           
@@ -95,6 +105,13 @@ class WebSocketClient {
         this.socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
+            
+            // Handle pong message
+            if (data.type === 'pong') {
+              this.lastPongTime = Date.now();
+              return;
+            }
+            
             this.handleMessage(data);
           } catch (error) {
             console.error('Failed to parse WebSocket message', error);
@@ -108,6 +125,36 @@ class WebSocketClient {
         reject(error);
       }
     });
+  }
+  
+  // Start ping interval to detect connection issues
+  private startPingInterval(): void {
+    this.stopPingInterval();
+    
+    this.pingInterval = window.setInterval(() => {
+      // Send ping message
+      if (this.isConnected()) {
+        this.send('ping', { timestamp: Date.now() });
+        
+        // Check if we've received a pong recently
+        const timeSinceLastPong = Date.now() - this.lastPongTime;
+        if (timeSinceLastPong > this.pingTimeoutMs) {
+          console.warn(`No pong received for ${timeSinceLastPong}ms, connection may be dead`);
+          // Force close the connection so reconnection logic kicks in
+          if (this.socket) {
+            this.socket.close();
+          }
+        }
+      }
+    }, 5000);
+  }
+  
+  // Stop ping interval
+  private stopPingInterval(): void {
+    if (this.pingInterval !== null) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
   }
   
   // Send message to WebSocket server with promise for response
@@ -202,6 +249,8 @@ class WebSocketClient {
       clearTimeout(this.connectionTimeoutTimer);
       this.connectionTimeoutTimer = null;
     }
+    
+    this.stopPingInterval();
     
     if (this.socket) {
       this.socket.close(1000, 'Client disconnected');
