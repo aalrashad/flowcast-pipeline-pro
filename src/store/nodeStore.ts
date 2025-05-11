@@ -1,4 +1,3 @@
-
 import { create } from "zustand";
 import { 
   Connection,
@@ -290,7 +289,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
   duplicateConnection: (sourceId, targetIds) => {
     const newEdges = [...get().edges];
     
-    // Type guard: ensure targetIds is an array before using map
+    // Ensure targetIds is an array before using forEach
     if (Array.isArray(targetIds)) {
       targetIds.forEach(targetId => {
         const edgeId = `e${sourceId}-${targetId}`;
@@ -318,8 +317,9 @@ export const useNodeStore = create<RFState>((set, get) => ({
   updateAudioMixer: (nodeId, sourceId, data) => {
     set({
       nodes: get().nodes.map(node => {
-        if (node.id === nodeId && node.data.audioSources) {
-          const updatedAudioSources = Array.isArray(node.data.audioSources) 
+        if (node.id === nodeId && node.data?.audioSources) {
+          // Ensure node.data.audioSources is an array before using map
+          const audioSources = Array.isArray(node.data.audioSources) 
             ? node.data.audioSources.map(source => {
                 if (source.id === sourceId) {
                   return {
@@ -335,7 +335,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
             ...node,
             data: {
               ...node.data,
-              audioSources: updatedAudioSources
+              audioSources: audioSources
             }
           };
         }
@@ -363,7 +363,6 @@ export const useNodeStore = create<RFState>((set, get) => ({
     });
   },
   
-  // New function to delete a node
   deleteNode: (nodeId) => {
     // Remove the node
     const updatedNodes = get().nodes.filter(node => node.id !== nodeId);
@@ -381,18 +380,16 @@ export const useNodeStore = create<RFState>((set, get) => ({
     });
   },
   
-  // New function to delete an edge
   deleteEdge: (edgeId) => {
     const updatedEdges = get().edges.filter(edge => edge.id !== edgeId);
     set({ edges: updatedEdges });
   },
   
-  // Function to add external audio source to an encoder
   addExternalAudioToEncoder: (encoderNodeId, sourceNodeId, sourceLabel, sourceType) => {
     const nodes = get().nodes;
     const encoderNode = nodes.find(node => node.id === encoderNodeId);
     
-    if (encoderNode && encoderNode.data.audioSources) {
+    if (encoderNode && encoderNode.data?.audioSources) {
       // Create a unique ID for this audio source
       const audioSourceId = `audio-${sourceNodeId}-${uuidv4().slice(0, 4)}`;
       
@@ -406,6 +403,11 @@ export const useNodeStore = create<RFState>((set, get) => ({
         sourceType
       };
       
+      // Ensure audioSources is an array before trying to spread it
+      const currentAudioSources = Array.isArray(encoderNode.data.audioSources) 
+        ? encoderNode.data.audioSources 
+        : [];
+      
       // Update encoder node with new audio source
       set({
         nodes: nodes.map(node => {
@@ -414,7 +416,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
               ...node,
               data: {
                 ...node.data,
-                audioSources: [...node.data.audioSources, newAudioSource]
+                audioSources: [...currentAudioSources, newAudioSource]
               }
             };
           }
@@ -424,20 +426,22 @@ export const useNodeStore = create<RFState>((set, get) => ({
     }
   },
   
-  // Function to remove an audio source from an encoder
   removeAudioSource: (encoderNodeId, sourceId) => {
     const nodes = get().nodes;
     
     set({
       nodes: nodes.map(node => {
-        if (node.id === encoderNodeId && node.data.audioSources) {
+        if (node.id === encoderNodeId && node.data?.audioSources) {
+          // Ensure audioSources is an array before using filter
+          const audioSources = Array.isArray(node.data.audioSources) 
+            ? node.data.audioSources.filter(source => source.id !== sourceId)
+            : [];
+            
           return {
             ...node,
             data: {
               ...node.data,
-              audioSources: node.data.audioSources.filter(
-                source => source.id !== sourceId
-              )
+              audioSources: audioSources
             }
           };
         }
