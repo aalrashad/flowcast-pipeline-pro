@@ -31,7 +31,7 @@ type AudioSource = {
 // Interface for the pipeline entries in the store, allowing for pending promises
 interface PipelineEntry {
   pipeline: GstPipeline;
-  statusInterval?: number;
+  statusInterval?: NodeJS.Timeout; // Changed from number to NodeJS.Timeout
   pending?: boolean;
 }
 
