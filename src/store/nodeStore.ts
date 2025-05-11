@@ -18,6 +18,15 @@ type NodeData = {
   [key: string]: any;
 };
 
+type AudioSource = {
+  id: string;
+  label: string;
+  level: number;
+  muted: boolean;
+  sourceNodeId?: string;
+  sourceType?: string;
+};
+
 type RFState = {
   nodes: Node[];
   edges: Edge[];
@@ -32,6 +41,10 @@ type RFState = {
   duplicateConnection: (sourceId: string, targetIds: string[]) => void;
   updateAudioMixer: (nodeId: string, sourceId: string, data: {level?: number, muted?: boolean}) => void;
   selectNdiSource: (nodeId: string, sourceId: string, sourceName: string, ipAddress: string) => void;
+  deleteNode: (nodeId: string) => void;
+  deleteEdge: (edgeId: string) => void;
+  addExternalAudioToEncoder: (encoderNodeId: string, sourceNodeId: string, sourceLabel: string, sourceType: string) => void;
+  removeAudioSource: (encoderNodeId: string, sourceId: string) => void;
 };
 
 const initialNodes: Node[] = [
@@ -342,6 +355,89 @@ export const useNodeStore = create<RFState>((set, get) => ({
               sourceName,
               ipAddress,
               status: 'connected'
+            }
+          };
+        }
+        return node;
+      })
+    });
+  },
+  
+  // New function to delete a node
+  deleteNode: (nodeId) => {
+    // Remove the node
+    const updatedNodes = get().nodes.filter(node => node.id !== nodeId);
+    
+    // Also remove any edges connected to this node
+    const updatedEdges = get().edges.filter(
+      edge => edge.source !== nodeId && edge.target !== nodeId
+    );
+    
+    set({
+      nodes: updatedNodes,
+      edges: updatedEdges,
+      // If the deleted node was selected, clear selection
+      selectedNode: get().selectedNode?.id === nodeId ? null : get().selectedNode
+    });
+  },
+  
+  // New function to delete an edge
+  deleteEdge: (edgeId) => {
+    const updatedEdges = get().edges.filter(edge => edge.id !== edgeId);
+    set({ edges: updatedEdges });
+  },
+  
+  // Function to add external audio source to an encoder
+  addExternalAudioToEncoder: (encoderNodeId, sourceNodeId, sourceLabel, sourceType) => {
+    const nodes = get().nodes;
+    const encoderNode = nodes.find(node => node.id === encoderNodeId);
+    
+    if (encoderNode && encoderNode.data.audioSources) {
+      // Create a unique ID for this audio source
+      const audioSourceId = `audio-${sourceNodeId}-${uuidv4().slice(0, 4)}`;
+      
+      // Add the new audio source
+      const newAudioSource: AudioSource = {
+        id: audioSourceId,
+        label: sourceLabel,
+        level: 75,
+        muted: false,
+        sourceNodeId,
+        sourceType
+      };
+      
+      // Update encoder node with new audio source
+      set({
+        nodes: nodes.map(node => {
+          if (node.id === encoderNodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                audioSources: [...node.data.audioSources, newAudioSource]
+              }
+            };
+          }
+          return node;
+        })
+      });
+    }
+  },
+  
+  // Function to remove an audio source from an encoder
+  removeAudioSource: (encoderNodeId, sourceId) => {
+    const nodes = get().nodes;
+    
+    set({
+      nodes: nodes.map(node => {
+        if (node.id === encoderNodeId && node.data.audioSources) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              audioSources: node.data.audioSources.filter(
+                source => source.id !== sourceId
+              )
             }
           };
         }

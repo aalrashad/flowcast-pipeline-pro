@@ -1,4 +1,3 @@
-
 import { useCallback, useState } from 'react';
 import {
   ReactFlow,
@@ -20,6 +19,8 @@ import TestGenNode from '@/components/nodes/TestGenNode';
 import NdiSourceNode from '@/components/nodes/NdiSourceNode';
 import { toast } from 'sonner';
 import FileBrowser from '@/components/FileBrowser';
+import { Button } from '@/components/ui/button';
+import { Trash2 } from 'lucide-react';
 
 const nodeTypes: NodeTypes = {
   source: SourceNode,
@@ -41,7 +42,22 @@ const FlowCanvas = () => {
   const [fileBrowserOpen, setFileBrowserOpen] = useState(false);
   const [fileSelectedNodeId, setFileSelectedNodeId] = useState<string | null>(null);
   
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, setSelectedNode, updateNodeData, selectNdiSource, updateAudioMixer } = useNodeStore();
+  const { 
+    nodes, 
+    edges, 
+    onNodesChange, 
+    onEdgesChange, 
+    onConnect, 
+    setSelectedNode, 
+    updateNodeData, 
+    selectNdiSource, 
+    updateAudioMixer,
+    deleteNode,
+    deleteEdge,
+    addExternalAudioToEncoder,
+    removeAudioSource
+  } = useNodeStore();
+  
   const reactFlowInstance = useReactFlow();
 
   const onNodeClick = useCallback((_, node) => {
@@ -65,6 +81,29 @@ const FlowCanvas = () => {
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
   }, [setSelectedNode]);
+
+  const handleDeleteSelected = useCallback(() => {
+    const selectedNodes = nodes.filter(node => node.selected);
+    const selectedEdges = edges.filter(edge => edge.selected);
+    
+    if (selectedNodes.length > 0) {
+      selectedNodes.forEach(node => {
+        deleteNode(node.id);
+      });
+      toast.success(`Deleted ${selectedNodes.length} node(s)`);
+    }
+    
+    if (selectedEdges.length > 0) {
+      selectedEdges.forEach(edge => {
+        deleteEdge(edge.id);
+      });
+      toast.success(`Deleted ${selectedEdges.length} connection(s)`);
+    }
+    
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) {
+      toast.info("No elements selected");
+    }
+  }, [nodes, edges, deleteNode, deleteEdge]);
 
   const validateConnection = useCallback((connection) => {
     // Prevent connections to input nodes that already have connections
@@ -135,7 +174,17 @@ const FlowCanvas = () => {
     toast.info(`${muted ? 'Muted' : 'Unmuted'} audio source: ${sourceId}`);
   };
 
-  // Process nodes to add event handlers
+  const handleAddExternalAudio = (encoderNodeId: string, sourceNodeId: string, sourceLabel: string, sourceType: string) => {
+    addExternalAudioToEncoder(encoderNodeId, sourceNodeId, sourceLabel, sourceType);
+    toast.success(`Added external audio: ${sourceLabel}`);
+  };
+  
+  const handleRemoveAudioSource = (encoderNodeId: string, sourceId: string) => {
+    removeAudioSource(encoderNodeId, sourceId);
+    toast.success("Removed audio source");
+  };
+
+  // Process nodes to find available audio sources for each encoder
   const processedNodes = nodes.map(node => {
     if (node.type === 'ndi-source') {
       return {
@@ -149,14 +198,41 @@ const FlowCanvas = () => {
     }
     
     if (node.type === 'encoder') {
+      // Find all source nodes connected to this encoder
+      const incomingEdges = edges.filter(e => e.target === node.id);
+      const connectedSourceNodes = incomingEdges.map(edge => {
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        return sourceNode;
+      }).filter(Boolean);
+      
+      // Find all other potential audio sources (not already connected)
+      const availableExternalAudio = nodes
+        .filter(n => 
+          // Is a source type node
+          (n.type?.includes('source') || n.type === 'testgen') && 
+          // Not already connected to this encoder
+          !incomingEdges.some(e => e.source === n.id)
+        )
+        .map(n => ({
+          id: `${n.id}-audio`,
+          label: `${n.data.label || n.type} Audio`,
+          nodeId: n.id,
+          type: n.type || ''
+        }));
+      
       return {
         ...node,
         data: {
           ...node.data,
+          availableExternalAudio,
           onAudioLevelChange: (sourceId: string, level: number) => 
             handleAudioLevelChange(node.id, sourceId, level),
           onAudioMuteToggle: (sourceId: string, muted: boolean) => 
-            handleAudioMuteToggle(node.id, sourceId, muted)
+            handleAudioMuteToggle(node.id, sourceId, muted),
+          onAddExternalAudio: (sourceNodeId: string, sourceLabel: string, sourceType: string) =>
+            handleAddExternalAudio(node.id, sourceNodeId, sourceLabel, sourceType),
+          onRemoveAudioSource: (sourceId: string) =>
+            handleRemoveAudioSource(node.id, sourceId)
         }
       };
     }
@@ -196,6 +272,17 @@ const FlowCanvas = () => {
       >
         <Background color="#2A2F3C" gap={16} />
         <Controls />
+        <Panel position="top-right">
+          <Button 
+            variant="destructive" 
+            size="sm" 
+            onClick={handleDeleteSelected}
+            className="flex items-center gap-1"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Selected
+          </Button>
+        </Panel>
         <MiniMap
           nodeStrokeColor={(n) => {
             if (n.type?.includes('source')) return '#4ade80';

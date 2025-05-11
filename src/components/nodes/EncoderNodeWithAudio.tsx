@@ -1,10 +1,21 @@
 
 import { memo, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Sliders, Volume, Volume2 } from 'lucide-react';
+import { Sliders, Volume, Volume2, Plus, Trash } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+interface AudioSource {
+  id: string;
+  label: string;
+  level: number;
+  muted: boolean;
+  sourceNodeId?: string;
+  sourceType?: string;
+}
 
 interface EncoderNodeWithAudioProps {
   id: string;
@@ -19,20 +30,19 @@ interface EncoderNodeWithAudioProps {
     info?: string;
     width?: number;
     height?: number;
-    audioSources?: {
-      id: string;
-      label: string;
-      level: number;
-      muted: boolean;
-    }[];
+    audioSources?: AudioSource[];
+    availableExternalAudio?: { id: string, label: string, nodeId: string, type: string }[];
     onAudioLevelChange?: (sourceId: string, level: number) => void;
     onAudioMuteToggle?: (sourceId: string, muted: boolean) => void;
+    onAddExternalAudio?: (sourceNodeId: string, sourceLabel: string, sourceType: string) => void;
+    onRemoveAudioSource?: (sourceId: string) => void;
   };
   selected?: boolean;
 }
 
 const EncoderNodeWithAudio = ({ id, data, selected }: EncoderNodeWithAudioProps) => {
   const [showAudioMixer, setShowAudioMixer] = useState(false);
+  const [externalAudioSelect, setExternalAudioSelect] = useState<string>("");
   
   const label = data.label || 'Encoder';
   const codec = data.codec || 'H.264';
@@ -48,6 +58,9 @@ const EncoderNodeWithAudio = ({ id, data, selected }: EncoderNodeWithAudioProps)
     { id: 'main', label: 'Main Source', level: 75, muted: false },
     { id: 'secondary', label: 'Secondary Source', level: 0, muted: true },
   ];
+
+  // External audio sources that can be added
+  const availableExternalAudio = data.availableExternalAudio || [];
   
   const getLoadColor = () => {
     if (cpuLoad > 80) return 'bg-red-500';
@@ -64,6 +77,26 @@ const EncoderNodeWithAudio = ({ id, data, selected }: EncoderNodeWithAudioProps)
   const handleAudioMuteToggle = (sourceId: string, muted: boolean) => {
     if (data.onAudioMuteToggle) {
       data.onAudioMuteToggle(sourceId, muted);
+    }
+  };
+
+  const handleAddExternalAudio = () => {
+    if (!externalAudioSelect || !data.onAddExternalAudio) return;
+    
+    const selectedSource = availableExternalAudio.find(source => source.id === externalAudioSelect);
+    if (selectedSource) {
+      data.onAddExternalAudio(
+        selectedSource.nodeId,
+        selectedSource.label,
+        selectedSource.type
+      );
+      setExternalAudioSelect("");
+    }
+  };
+  
+  const handleRemoveAudioSource = (sourceId: string) => {
+    if (data.onRemoveAudioSource) {
+      data.onRemoveAudioSource(sourceId);
     }
   };
   
@@ -128,21 +161,34 @@ const EncoderNodeWithAudio = ({ id, data, selected }: EncoderNodeWithAudioProps)
         <AccordionItem value="mixer" className="border-b-0">
           <AccordionTrigger className="py-1 text-xs">Audio Mixer</AccordionTrigger>
           <AccordionContent>
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {/* Audio Sources */}
               {audioSources.map(source => (
                 <div key={source.id} className="space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-xs">{source.label}</span>
-                    <button 
-                      className="p-1 rounded hover:bg-gray-700/50"
-                      onClick={() => handleAudioMuteToggle(source.id, !source.muted)}
-                    >
-                      {source.muted ? (
-                        <Volume className="h-3 w-3 text-gray-400" />
-                      ) : (
-                        <Volume2 className="h-3 w-3 text-green-400" />
+                    <div className="flex gap-1">
+                      <button 
+                        className="p-1 rounded hover:bg-gray-700/50"
+                        onClick={() => handleAudioMuteToggle(source.id, !source.muted)}
+                      >
+                        {source.muted ? (
+                          <Volume className="h-3 w-3 text-gray-400" />
+                        ) : (
+                          <Volume2 className="h-3 w-3 text-green-400" />
+                        )}
+                      </button>
+                      
+                      {/* Only show delete for external sources */}
+                      {source.sourceNodeId && (
+                        <button 
+                          className="p-1 rounded hover:bg-gray-700/50 hover:text-red-400"
+                          onClick={() => handleRemoveAudioSource(source.id)}
+                        >
+                          <Trash className="h-3 w-3" />
+                        </button>
                       )}
-                    </button>
+                    </div>
                   </div>
                   <input
                     type="range"
@@ -155,10 +201,41 @@ const EncoderNodeWithAudio = ({ id, data, selected }: EncoderNodeWithAudioProps)
                   />
                   <div className="flex justify-between text-xs text-gray-400">
                     <span>-∞</span>
+                    <span>{source.level}%</span>
                     <span>0 dB</span>
                   </div>
                 </div>
               ))}
+              
+              {/* Add External Audio Source */}
+              {availableExternalAudio && availableExternalAudio.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-gray-700/50">
+                  <div className="text-xs mb-2">Add External Audio Source</div>
+                  <div className="flex gap-2 items-center">
+                    <Select value={externalAudioSelect} onValueChange={setExternalAudioSelect}>
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Select source..." />
+                      </SelectTrigger>
+                      <SelectContent className="text-xs">
+                        {availableExternalAudio.map(source => (
+                          <SelectItem key={source.id} value={source.id} className="text-xs">
+                            {source.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-7 w-7 p-1 bg-green-500/20 hover:bg-green-500/40"
+                      onClick={handleAddExternalAudio}
+                      disabled={!externalAudioSelect}
+                    >
+                      <Plus className="h-4 w-4 text-green-500" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </AccordionContent>
         </AccordionItem>
