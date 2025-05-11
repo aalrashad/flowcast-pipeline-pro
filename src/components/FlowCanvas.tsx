@@ -9,7 +9,7 @@ import {
   Panel,
   NodeTypes,
   ConnectionLineType,
-  NodeResizeParams,
+  type ResizeParams,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useNodeStore } from '@/store/nodeStore';
@@ -67,8 +67,8 @@ const FlowCanvas = () => {
     setSelectedNode(null);
   }, [setSelectedNode]);
   
-  // Fixed resize handler with proper type handling
-  const handleResize = useCallback((event, params: NodeResizeParams) => {
+  // Fixed resize handler with the correct type
+  const handleResize = useCallback((event: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>, params: ResizeParams) => {
     const { node, width, height } = params;
     if (node && node.id && width && height) {
       updateNodeDimensions(node.id, width, height);
