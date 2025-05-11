@@ -100,7 +100,7 @@ export class HealthMonitor {
     const stats = pipelineStatus.stats || {};
     // Convert all values to numbers when creating the metrics object
     const metrics: Record<string, number> = {
-      bufferHealth: Number(stats.bufferLevel || 100),
+      bufferHealth: Number(stats.bufferHealth || 100),
       bitrate: Number(stats.bitrate || 0),
       framesDropped: Number(stats.framesDropped || 0),
       latency: Number(stats.latency || 0)
@@ -121,7 +121,9 @@ export class HealthMonitor {
     
     // Dropped frames check
     if (stats.framesReceived && stats.framesDropped) {
-      const dropRate = (Number(stats.framesDropped) / (Number(stats.framesReceived) + Number(stats.framesDropped))) * 100;
+      const framesReceived = Number(stats.framesReceived);
+      const framesDropped = Number(stats.framesDropped);
+      const dropRate = (framesDropped / (framesReceived + framesDropped)) * 100;
       metrics.dropRate = dropRate;
       
       if (dropRate > 20) {
