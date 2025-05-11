@@ -350,7 +350,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
     });
   },
   
-  selectNdiSource: (nodeId, sourceId, sourceName, ipAddress) => {
+  selectNdiSource: (nodeId: string, sourceId: string, sourceName: string, ipAddress: string) => {
     set({
       nodes: get().nodes.map(node => {
         if (node.id === nodeId) {
@@ -476,7 +476,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
     });
   },
   
-  createGstPipeline: (sourceNodeId, encoderNodeId) => {
+  createGstPipeline: (sourceNodeId: string, encoderNodeId: string) => {
     const nodes = get().nodes;
     const sourceNode = nodes.find(node => node.id === sourceNodeId);
     const encoderNode = nodes.find(node => node.id === encoderNodeId);
@@ -490,15 +490,20 @@ export const useNodeStore = create<RFState>((set, get) => ({
     
     // Create different pipelines based on source type
     if (sourceNode.type === 'srt-source' && sourceNode.data?.uri) {
+      // Type assertion to handle the unknown type
+      const sourceUri = sourceNode.data.uri as string;
       pipeline = gstreamerService.createSrtSourcePipeline(
-        sourceNode.data.uri,
+        sourceUri,
         {
           bitrate: encoderNode.data?.bitrate || 5000,
+          // Type assertion to ensure string type for output URI
           outputUri: 'rtmp://example.com/live/stream'
         }
       );
     } else if (sourceNode.type === 'ndi-source' && sourceNode.data?.sourceName) {
-      pipeline = gstreamerService.createNdiSourcePipeline(sourceNode.data.sourceName);
+      // Type assertion to handle the unknown type
+      const sourceName = sourceNode.data.sourceName as string;
+      pipeline = gstreamerService.createNdiSourcePipeline(sourceName);
     }
     
     if (pipeline) {
