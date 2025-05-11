@@ -9,7 +9,6 @@ import {
   Panel,
   NodeTypes,
   ConnectionLineType,
-  NodeResizeControl,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useNodeStore } from '@/store/nodeStore';
@@ -67,7 +66,7 @@ const FlowCanvas = () => {
     setSelectedNode(null);
   }, [setSelectedNode]);
   
-  const onNodeResize = useCallback((_, node, width, height) => {
+  const handleResize = useCallback((_, node, width, height) => {
     updateNodeDimensions(node.id, width, height);
   }, [updateNodeDimensions]);
 
@@ -198,7 +197,7 @@ const FlowCanvas = () => {
         nodesConnectable
         elementsSelectable
         nodeExtent={[[-Infinity, -Infinity], [Infinity, Infinity]]}
-        onNodeResize={onNodeResize}
+        onResize={handleResize}
       >
         <Background color="#2A2F3C" gap={16} />
         <Controls />

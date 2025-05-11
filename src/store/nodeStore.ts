@@ -277,24 +277,27 @@ export const useNodeStore = create<RFState>((set, get) => ({
   duplicateConnection: (sourceId, targetIds) => {
     const newEdges = [...get().edges];
     
-    targetIds.forEach(targetId => {
-      const edgeId = `e${sourceId}-${targetId}`;
-      
-      // Check if this connection already exists
-      const connectionExists = newEdges.some(edge => 
-        edge.source === sourceId && edge.target === targetId
-      );
-      
-      if (!connectionExists) {
-        newEdges.push({
-          id: edgeId,
-          source: sourceId,
-          target: targetId,
-          type: 'smoothstep',
-          animated: true
-        } as Edge);
-      }
-    });
+    // Type guard: ensure targetIds is an array before using map
+    if (Array.isArray(targetIds)) {
+      targetIds.forEach(targetId => {
+        const edgeId = `e${sourceId}-${targetId}`;
+        
+        // Check if this connection already exists
+        const connectionExists = newEdges.some(edge => 
+          edge.source === sourceId && edge.target === targetId
+        );
+        
+        if (!connectionExists) {
+          newEdges.push({
+            id: edgeId,
+            source: sourceId,
+            target: targetId,
+            type: 'smoothstep',
+            animated: true
+          } as Edge);
+        }
+      });
+    }
     
     set({ edges: newEdges });
   },
@@ -303,15 +306,17 @@ export const useNodeStore = create<RFState>((set, get) => ({
     set({
       nodes: get().nodes.map(node => {
         if (node.id === nodeId && node.data.audioSources) {
-          const updatedAudioSources = node.data.audioSources.map(source => {
-            if (source.id === sourceId) {
-              return {
-                ...source,
-                ...data
-              };
-            }
-            return source;
-          });
+          const updatedAudioSources = Array.isArray(node.data.audioSources) 
+            ? node.data.audioSources.map(source => {
+                if (source.id === sourceId) {
+                  return {
+                    ...source,
+                    ...data
+                  };
+                }
+                return source;
+              })
+            : [];
           
           return {
             ...node,

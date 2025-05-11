@@ -17,6 +17,8 @@ interface EncoderNodeWithAudioProps {
     status?: 'idle' | 'encoding' | 'error';
     cpuLoad?: number;
     info?: string;
+    width?: number;
+    height?: number;
     audioSources?: {
       id: string;
       label: string;
@@ -39,6 +41,7 @@ const EncoderNodeWithAudio = ({ id, data, selected }: EncoderNodeWithAudioProps)
   const frameRate = data.frameRate || 30;
   const status = data.status || 'idle';
   const cpuLoad = data.cpuLoad || 0;
+  const nodeWidth = data.width || 240;
   
   // Default audio sources if none provided
   const audioSources = data.audioSources || [
@@ -66,7 +69,7 @@ const EncoderNodeWithAudio = ({ id, data, selected }: EncoderNodeWithAudioProps)
   
   return (
     <div className={`px-4 py-2 shadow-md rounded-md bg-[#222532] border-2 ${selected ? 'border-white' : 'border-yellow-500'}`}
-         style={{ width: data.width || 240, minWidth: 240, maxWidth: 400 }}>
+         style={{ width: nodeWidth, minWidth: 240, maxWidth: 400 }}>
       <div className="flex justify-between items-center">
         <div className="w-8 h-8 rounded-full flex items-center justify-center bg-yellow-500/20">
           <Sliders className="w-4 h-4 text-yellow-500" />

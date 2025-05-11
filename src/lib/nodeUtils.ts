@@ -16,10 +16,10 @@ export const getNodeColor = (nodeType: string | undefined): string => {
   return '#9b87f5'; // Default color
 };
 
-export const getNodeIcon = (nodeType: string | undefined) => {
+export const getNodeIcon = (nodeType: string | undefined): string | null => {
   if (!nodeType) return null;
   
-  const iconMap: any = {
+  const iconMap: Record<string, string> = {
     'source': 'FileInput',
     'srt-source': 'Wifi',
     'rtmp-source': 'Wifi',
@@ -36,7 +36,7 @@ export const getNodeIcon = (nodeType: string | undefined) => {
   return iconMap[nodeType] || null;
 };
 
-export const validateConnection = (source: any, target: any, edges: any[]) => {
+export const validateConnection = (source: any, target: any, edges: any[]): boolean => {
   if (!source || !target) return false;
   
   // Check if the connection already exists
@@ -51,19 +51,19 @@ export const validateConnection = (source: any, target: any, edges: any[]) => {
   const targetType = target.type;
   
   // Source nodes can connect to encoders or sinks
-  if ((sourceType.includes('source') || sourceType === 'ndi-source') && 
-     (targetType === 'encoder' || targetType.includes('sink'))) {
+  if ((sourceType?.includes('source') || sourceType === 'ndi-source') && 
+     (targetType === 'encoder' || targetType?.includes('sink'))) {
     return true;
   }
   
   // Encoders can connect to multiple sinks (1-to-many)
-  if (sourceType === 'encoder' && targetType.includes('sink')) {
+  if (sourceType === 'encoder' && targetType?.includes('sink')) {
     return true;
   }
   
   // Test generators can connect to encoders or sinks
   if (sourceType === 'testgen' && 
-     (targetType === 'encoder' || targetType.includes('sink'))) {
+     (targetType === 'encoder' || targetType?.includes('sink'))) {
     return true;
   }
   
