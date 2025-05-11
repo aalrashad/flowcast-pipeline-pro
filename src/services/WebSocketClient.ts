@@ -16,6 +16,9 @@ class WebSocketClient {
   private reconnectDelay: number = 2000;
   private reconnectTimer: number | null = null;
   private isReconnecting: boolean = false;
+  private messageQueue: Array<{ type: string, payload: any, messageId?: string }> = [];
+  private connectionTimeout: number = 10000; // 10 seconds
+  private connectionTimeoutTimer: number | null = null;
   
   constructor(url: string) {
     this.url = url;
@@ -32,15 +35,42 @@ class WebSocketClient {
         
         this.socket = new WebSocket(this.url);
         
+        // Set connection timeout
+        this.connectionTimeoutTimer = window.setTimeout(() => {
+          if (this.socket && this.socket.readyState !== WebSocket.OPEN) {
+            console.error('WebSocket connection timeout');
+            this.socket.close();
+            reject(new Error('WebSocket connection timeout'));
+          }
+        }, this.connectionTimeout);
+        
         this.socket.onopen = () => {
           console.log('WebSocket connected');
+          
+          // Clear connection timeout
+          if (this.connectionTimeoutTimer) {
+            clearTimeout(this.connectionTimeoutTimer);
+            this.connectionTimeoutTimer = null;
+          }
+          
           this.reconnectAttempts = 0;
           this.notifyStatusChange('connected');
+          
+          // Send any queued messages
+          this.flushMessageQueue();
+          
           resolve();
         };
         
         this.socket.onclose = (event) => {
           console.log('WebSocket disconnected', event.code, event.reason);
+          
+          // Clear connection timeout if it's still active
+          if (this.connectionTimeoutTimer) {
+            clearTimeout(this.connectionTimeoutTimer);
+            this.connectionTimeoutTimer = null;
+          }
+          
           this.notifyStatusChange('disconnected');
           
           // Attempt to reconnect if not intentionally closed
@@ -51,6 +81,13 @@ class WebSocketClient {
         
         this.socket.onerror = (error) => {
           console.error('WebSocket error', error);
+          
+          // Clear connection timeout if it's still active
+          if (this.connectionTimeoutTimer) {
+            clearTimeout(this.connectionTimeoutTimer);
+            this.connectionTimeoutTimer = null;
+          }
+          
           this.notifyStatusChange('error', new Error('WebSocket connection error'));
           reject(error);
         };
@@ -115,7 +152,8 @@ class WebSocketClient {
   // Send message to WebSocket server
   send(type: string, payload: any, messageId?: string): boolean {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket not connected');
+      console.warn('WebSocket not connected, queuing message');
+      this.messageQueue.push({ type, payload, messageId });
       return false;
     }
     
@@ -135,6 +173,22 @@ class WebSocketClient {
     }
   }
   
+  // Process queued messages
+  private flushMessageQueue(): void {
+    if (this.messageQueue.length > 0) {
+      console.log(`Sending ${this.messageQueue.length} queued messages`);
+      
+      // Create a copy of the queue and clear the original
+      const queueCopy = [...this.messageQueue];
+      this.messageQueue = [];
+      
+      // Attempt to send each message
+      queueCopy.forEach(msg => {
+        this.send(msg.type, msg.payload, msg.messageId);
+      });
+    }
+  }
+  
   // Close WebSocket connection
   disconnect(): void {
     this.isReconnecting = false;
@@ -142,6 +196,11 @@ class WebSocketClient {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    
+    if (this.connectionTimeoutTimer) {
+      clearTimeout(this.connectionTimeoutTimer);
+      this.connectionTimeoutTimer = null;
     }
     
     if (this.socket) {
@@ -177,6 +236,16 @@ class WebSocketClient {
   // Register connection status handler
   onStatus(callback: WebSocketStatusCallback): void {
     this.statusCallbacks.push(callback);
+    
+    // Immediately notify of current status if connected
+    if (this.socket) {
+      const status = this.isConnected() ? 'connected' : 'disconnected';
+      try {
+        callback(status);
+      } catch (error) {
+        console.error('Error in status callback', error);
+      }
+    }
   }
   
   // Remove connection status handler
@@ -190,6 +259,19 @@ class WebSocketClient {
   // Check if WebSocket is connected
   isConnected(): boolean {
     return !!this.socket && this.socket.readyState === WebSocket.OPEN;
+  }
+  
+  // Get current WebSocket status
+  getStatus(): 'connecting' | 'connected' | 'disconnected' | 'closing' {
+    if (!this.socket) return 'disconnected';
+    
+    switch (this.socket.readyState) {
+      case WebSocket.CONNECTING: return 'connecting';
+      case WebSocket.OPEN: return 'connected';
+      case WebSocket.CLOSING: return 'closing';
+      case WebSocket.CLOSED:
+      default: return 'disconnected';
+    }
   }
   
   // Private: Handle incoming WebSocket messages
@@ -252,11 +334,21 @@ class WebSocketClient {
     this.maxReconnectAttempts = maxAttempts;
     this.reconnectDelay = baseDelay;
   }
+  
+  // Get the number of queued messages
+  getQueueLength(): number {
+    return this.messageQueue.length;
+  }
+  
+  // Get reconnection attempt count
+  getReconnectAttempts(): number {
+    return this.reconnectAttempts;
+  }
 }
 
 // Create a singleton instance with default server URL
-// In a real application, this would be configured from environment
-const WEBSOCKET_URL = 'ws://localhost:8080/gstreamer';
+// Use environment variable if available, otherwise use default
+const WEBSOCKET_URL = import.meta.env.VITE_GSTREAMER_WS_URL || 'ws://localhost:8080/gstreamer';
 export const wsClient = new WebSocketClient(WEBSOCKET_URL);
 
 export default wsClient;

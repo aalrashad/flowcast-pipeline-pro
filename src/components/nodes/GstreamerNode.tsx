@@ -1,7 +1,7 @@
 
 import { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Terminal, Play, Square, AlertCircle, RefreshCw } from 'lucide-react';
+import { Terminal, Play, Square, AlertCircle, RefreshCw, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,6 +10,12 @@ import { pipelineTemplates, validatePipelineElements } from '@/lib/gstreamerUtil
 import { Progress } from '@/components/ui/progress';
 import { GstPipelineStatus } from '@/services/GstreamerService';
 import { toast } from 'sonner';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface GstreamerNodeProps {
   id: string;
@@ -21,6 +27,7 @@ interface GstreamerNodeProps {
     onStart?: () => void;
     onStop?: () => void;
     onPipelineUpdate?: (pipeline: string) => void;
+    errorMessage?: string;
   };
   selected?: boolean;
 }
@@ -122,6 +129,8 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
   
   const nodeColor = getNodeColor('gstreamer');
   const bufferLevel = data.pipelineStatus?.stats?.bufferLevel || 0;
+  const bitrate = data.pipelineStatus?.stats?.bitrate || 0;
+  const framesReceived = data.pipelineStatus?.stats?.framesReceived || 0;
 
   return (
     <div className={`px-4 py-2 shadow-md rounded-md w-80 bg-[#222532] border-2 ${selected ? 'border-white' : 'border-[#ffcc00]'}`}>
@@ -132,14 +141,41 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
         <div className="ml-2">
           <div className="text-sm font-bold">{label}</div>
         </div>
-        <Badge 
-          variant="outline" 
-          className={`ml-auto text-xs flex items-center ${getStatusColor()}`}
-        >
-          {getStatusIcon()}
-          {status}
-        </Badge>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge 
+                variant="outline" 
+                className={`ml-auto text-xs flex items-center ${getStatusColor()}`}
+              >
+                {getStatusIcon()}
+                {status}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Current pipeline state: {data.pipelineStatus?.statusMessage || status}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
+      
+      {/* Add stats indicators if we have them */}
+      {data.pipelineStatus?.stats && (
+        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          {bitrate > 0 && (
+            <div className="flex justify-between">
+              <span>Bitrate:</span>
+              <span>{(bitrate/1000).toFixed(1)} Kbps</span>
+            </div>
+          )}
+          {framesReceived > 0 && (
+            <div className="flex justify-between">
+              <span>Frames:</span>
+              <span>{framesReceived}</span>
+            </div>
+          )}
+        </div>
+      )}
       
       {/* Add buffer indicator if we're in a state that needs it */}
       {['connecting', 'reconnecting', 'buffering', 'receiving'].includes(status) && (
@@ -153,13 +189,22 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
       )}
       
       {data.pipelineStatus?.statusMessage && (
-        <div className="mt-1 text-xs text-gray-400">
+        <div className="mt-1 text-xs text-gray-400 flex items-center">
+          <Info className="w-3 h-3 mr-1" />
           {data.pipelineStatus.statusMessage}
         </div>
       )}
       
+      {data.errorMessage && (
+        <div className="mt-1 text-xs text-red-400 flex items-center">
+          <AlertCircle className="w-3 h-3 mr-1" />
+          {data.errorMessage}
+        </div>
+      )}
+      
       {validationErrors.length > 0 && (
-        <div className="mt-1 text-xs text-red-400">
+        <div className="mt-1 text-xs text-red-400 flex items-center">
+          <AlertCircle className="w-3 h-3 mr-1" />
           {validationErrors[0]}
           {validationErrors.length > 1 && ` (+${validationErrors.length - 1} more errors)`}
         </div>

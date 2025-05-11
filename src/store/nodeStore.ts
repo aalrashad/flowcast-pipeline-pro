@@ -1,3 +1,4 @@
+
 import { create } from "zustand";
 import { 
   Connection,
@@ -11,7 +12,7 @@ import {
   addEdge,
 } from "@xyflow/react";
 import { v4 as uuidv4 } from "uuid";
-import gstreamerService, { GstPipeline } from "@/services/GstreamerService";
+import gstreamerService, { GstPipeline, GstPipelineState } from "@/services/GstreamerService";
 
 type NodeData = {
   label?: string;
@@ -27,11 +28,18 @@ type AudioSource = {
   sourceType?: string;
 };
 
+// Interface for the pipeline entries in the store, allowing for pending promises
+interface PipelineEntry {
+  pipeline: GstPipeline;
+  statusInterval?: number;
+  pending?: boolean;
+}
+
 type RFState = {
   nodes: Node[];
   edges: Edge[];
   selectedNode: Node | null;
-  pipelines: Record<string, GstPipeline>;
+  pipelines: Record<string, PipelineEntry>;
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
@@ -365,7 +373,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
     set(state => ({
       pipelines: {
         ...state.pipelines,
-        [nodeId]: placeholderPipeline
+        [nodeId]: { pipeline: placeholderPipeline }
       },
       nodes: state.nodes.map(node => {
         if (node.id === nodeId) {
@@ -391,7 +399,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
         set(state => ({
           pipelines: {
             ...state.pipelines,
-            [nodeId]: pipeline
+            [nodeId]: { pipeline }
           },
           nodes: state.nodes.map(node => {
             if (node.id === nodeId) {
@@ -430,13 +438,19 @@ export const useNodeStore = create<RFState>((set, get) => ({
   
   deleteNode: (nodeId) => {
     // Remove any associated GStreamer pipelines
-    if (get().pipelines[nodeId]) {
-      gstreamerService.deletePipeline(get().pipelines[nodeId].id);
+    const pipelineEntry = get().pipelines[nodeId];
+    if (pipelineEntry) {
+      gstreamerService.deletePipeline(pipelineEntry.pipeline.id);
       
       // Remove pipeline from state
       const updatedPipelines = {...get().pipelines};
       delete updatedPipelines[nodeId];
       set({ pipelines: updatedPipelines });
+      
+      // Clear any status update intervals
+      if (pipelineEntry.statusInterval) {
+        clearInterval(pipelineEntry.statusInterval);
+      }
     }
     
     // Remove the node and connected edges
@@ -545,7 +559,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
     set(state => ({
       pipelines: {
         ...state.pipelines,
-        [sourceNodeId]: placeholderPipeline
+        [sourceNodeId]: { pipeline: placeholderPipeline, pending: true }
       },
       nodes: state.nodes.map(node => {
         if (node.id === sourceNodeId) {
@@ -590,7 +604,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
           set(state => ({
             pipelines: {
               ...state.pipelines,
-              [sourceNodeId]: pipeline
+              [sourceNodeId]: { pipeline, pending: false }
             },
             nodes: state.nodes.map(node => {
               if (node.id === sourceNodeId) {
@@ -633,8 +647,8 @@ export const useNodeStore = create<RFState>((set, get) => ({
   },
   
   startGstPipeline: (nodeId) => {
-    const pipeline = get().pipelines[nodeId];
-    if (!pipeline) {
+    const pipelineEntry = get().pipelines[nodeId];
+    if (!pipelineEntry) {
       console.error(`No pipeline found for node ${nodeId}`);
       return;
     }
@@ -656,7 +670,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
     });
     
     // Start the pipeline
-    gstreamerService.startPipeline(pipeline.id)
+    gstreamerService.startPipeline(pipelineEntry.pipeline.id)
       .then(success => {
         if (!success) {
           throw new Error('Failed to start pipeline');
@@ -668,15 +682,13 @@ export const useNodeStore = create<RFState>((set, get) => ({
         }, 1000);
         
         // Store the interval ID in the pipeline object
-        const updatedPipeline = {
-          ...pipeline,
-          statusInterval
-        };
-        
         set(state => ({
           pipelines: {
             ...state.pipelines,
-            [nodeId]: updatedPipeline
+            [nodeId]: { 
+              ...state.pipelines[nodeId],
+              statusInterval
+            }
           }
         }));
       })
@@ -703,19 +715,18 @@ export const useNodeStore = create<RFState>((set, get) => ({
   },
   
   stopGstPipeline: (nodeId) => {
-    const pipeline = get().pipelines[nodeId];
-    if (!pipeline) {
+    const pipelineEntry = get().pipelines[nodeId];
+    if (!pipelineEntry) {
       console.error(`No pipeline found for node ${nodeId}`);
       return;
     }
     
     // Clear status update interval if it exists
-    const statusInterval = (pipeline as any).statusInterval;
-    if (statusInterval) {
-      clearInterval(statusInterval);
+    if (pipelineEntry.statusInterval) {
+      clearInterval(pipelineEntry.statusInterval);
     }
     
-    gstreamerService.stopPipeline(pipeline.id)
+    gstreamerService.stopPipeline(pipelineEntry.pipeline.id)
       .then(success => {
         if (!success) {
           throw new Error('Failed to stop pipeline');
@@ -746,14 +757,14 @@ export const useNodeStore = create<RFState>((set, get) => ({
   },
   
   updateGstreamerNodeStatus: (nodeId) => {
-    const pipeline = get().pipelines[nodeId];
-    if (!pipeline) {
-      console.error(`No pipeline found for node ${nodeId}`);
+    const pipelineEntry = get().pipelines[nodeId];
+    if (!pipelineEntry || pipelineEntry.pending) {
+      // Skip update if no pipeline or pipeline is pending
       return;
     }
     
     // Get current pipeline status
-    const pipelineStatus = gstreamerService.getPipelineStatus(pipeline.id);
+    const pipelineStatus = gstreamerService.getPipelineStatus(pipelineEntry.pipeline.id);
     
     // Map GStreamer pipeline state to node status
     const nodeStatus = (): string => {
