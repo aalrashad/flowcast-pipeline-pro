@@ -59,5 +59,26 @@ export const pipelineTemplates = {
   webcamToRtmp: 'v4l2src ! videoconvert ! x264enc ! flvmux ! rtmpsink location=rtmp://example.com/live/stream',
   fileToRtmp: 'filesrc location="/path/to/file.mp4" ! qtdemux ! h264parse ! flvmux ! rtmpsink location=rtmp://example.com/live/stream',
   ndiToScreen: 'ndisrc ndi-name="Camera 1" ! videoconvert ! autovideosink',
-  srtToRtmp: 'srtsrc uri=srt://example.com:7001 ! tsdemux ! h264parse ! flvmux ! rtmpsink location=rtmp://example.com/live/stream'
+  srtToRtmp: 'srtsrc uri=srt://example.com:7001 ! tsdemux ! h264parse ! flvmux ! rtmpsink location=rtmp://example.com/live/stream',
+  // Additional advanced pipeline templates
+  srtToRtmpWithReconnect: 'srtsrc uri=srt://example.com:7001 latency=2000 reconnect=true ! tsdemux ! h264parse ! flvmux ! rtmpsink location=rtmp://example.com/live/stream',
+  webrtcSourceToRtmp: 'webrtcsrc ! rtph264depay ! h264parse ! flvmux ! rtmpsink location=rtmp://example.com/live/stream',
+  ndiToSrt: 'ndisrc ndi-name="Camera 1" ! videoconvert ! x264enc bitrate=5000 ! mpegtsmux ! srtsink uri=srt://output.example.com:7001/',
+  mediaRelay: 'srtsrc uri=srt://input.example.com:7001 ! tsdemux ! h264parse ! tee name=t ! queue ! srtsink uri=srt://output1.example.com:7001/ t. ! queue ! rtmpsink location=rtmp://output2.example.com/live/stream'
+};
+
+// Get human-readable status from GStreamer state
+export const getStatusDescription = (status: string): string => {
+  const statusMap: Record<string, string> = {
+    'idle': 'Pipeline is idle',
+    'playing': 'Pipeline is active',
+    'paused': 'Pipeline is paused',
+    'error': 'Error in pipeline',
+    'connecting': 'Establishing connection...',
+    'reconnecting': 'Connection lost, reconnecting...',
+    'receiving': 'Receiving media stream',
+    'buffering': 'Buffering media data...'
+  };
+  
+  return statusMap[status] || 'Unknown status';
 };

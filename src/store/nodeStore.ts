@@ -49,6 +49,7 @@ type RFState = {
   createGstPipeline: (sourceNodeId: string, encoderNodeId: string) => void;
   startGstPipeline: (nodeId: string) => void;
   stopGstPipeline: (nodeId: string) => void;
+  updateGstreamerNodeStatus: (nodeId: string) => void;
 };
 
 const initialNodes: Node[] = [
@@ -544,13 +545,30 @@ export const useNodeStore = create<RFState>((set, get) => ({
               ...node,
               data: {
                 ...node.data,
-                status: 'connected'
+                status: 'connecting'
               }
             };
           }
           return node;
         })
       });
+      
+      // Start polling for pipeline status updates
+      const statusInterval = setInterval(() => {
+        get().updateGstreamerNodeStatus(nodeId);
+      }, 1000);
+      
+      // Store the interval ID
+      set(state => ({
+        ...state,
+        pipelines: {
+          ...state.pipelines,
+          [nodeId]: {
+            ...state.pipelines[nodeId],
+            statusInterval
+          }
+        }
+      }));
     }
   },
   
@@ -561,6 +579,12 @@ export const useNodeStore = create<RFState>((set, get) => ({
       return;
     }
     
+    // Clear status update interval if it exists
+    const statusInterval = (pipeline as any).statusInterval;
+    if (statusInterval) {
+      clearInterval(statusInterval);
+    }
+    
     if (gstreamerService.stopPipeline(pipeline.id)) {
       set({
         nodes: get().nodes.map(node => {
@@ -569,7 +593,7 @@ export const useNodeStore = create<RFState>((set, get) => ({
               ...node,
               data: {
                 ...node.data,
-                status: 'offline'
+                status: 'paused'
               }
             };
           }
@@ -577,5 +601,49 @@ export const useNodeStore = create<RFState>((set, get) => ({
         })
       });
     }
+  },
+  
+  updateGstreamerNodeStatus: (nodeId) => {
+    const pipeline = get().pipelines[nodeId];
+    if (!pipeline) {
+      console.error(`No pipeline found for node ${nodeId}`);
+      return;
+    }
+    
+    // Get current pipeline status
+    const pipelineStatus = gstreamerService.getPipelineStatus(pipeline.id);
+    
+    // Map GStreamer pipeline state to node status
+    const nodeStatus = (): string => {
+      switch (pipelineStatus.state) {
+        case 'RECEIVING': return 'receiving';
+        case 'CONNECTING': return 'connecting';
+        case 'RECONNECTING': return 'reconnecting';
+        case 'BUFFERING': return 'buffering';
+        case 'PAUSED': return 'paused';
+        case 'PLAYING': return 'playing';
+        case 'ERROR': return 'error';
+        case 'NULL':
+        case 'DISCONNECTED': 
+        default: return 'idle';
+      }
+    };
+    
+    // Update node with current status
+    set({
+      nodes: get().nodes.map(node => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              status: nodeStatus(),
+              pipelineStatus
+            }
+          };
+        }
+        return node;
+      })
+    });
   }
 }));

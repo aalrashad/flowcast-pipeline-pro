@@ -60,7 +60,8 @@ const FlowCanvas = () => {
     removeAudioSource,
     startGstPipeline,
     stopGstPipeline,
-    createGstPipeline
+    createGstPipeline,
+    updateGstreamerNodeStatus
   } = useNodeStore();
   
   const reactFlowInstance = useReactFlow();
@@ -90,9 +91,12 @@ const FlowCanvas = () => {
       // Auto-play GStreamer pipeline on double click
       startGstPipeline(node.id);
       toast.success('Starting GStreamer pipeline');
+      
+      // Immediately update status to show connecting
+      updateGstreamerNodeStatus(node.id);
       return;
     }
-  }, [startGstPipeline]);
+  }, [startGstPipeline, updateGstreamerNodeStatus]);
 
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
@@ -170,11 +174,14 @@ const FlowCanvas = () => {
           (sourceNode.type?.includes('source') || sourceNode.type === 'testgen') && 
           targetNode.type === 'encoder') {
         createGstPipeline(sourceNode.id, targetNode.id);
+        
+        // Do an immediate status update
+        setTimeout(() => updateGstreamerNodeStatus(sourceNode.id), 100);
       }
       
       toast.success("Connection established");
     }
-  }, [validateConnection, onConnect, nodes, createGstPipeline]);
+  }, [validateConnection, onConnect, nodes, createGstPipeline, updateGstreamerNodeStatus]);
   
   const handleFileSelect = (filePath: string) => {
     if (fileSelectedNodeId) {
@@ -214,11 +221,17 @@ const FlowCanvas = () => {
   const handleStartGstreamer = (nodeId: string) => {
     startGstPipeline(nodeId);
     toast.success("Started GStreamer pipeline");
+    
+    // Do an immediate status update
+    updateGstreamerNodeStatus(nodeId);
   };
   
   const handleStopGstreamer = (nodeId: string) => {
     stopGstPipeline(nodeId);
     toast.success("Stopped GStreamer pipeline");
+    
+    // Do an immediate status update
+    updateGstreamerNodeStatus(nodeId);
   };
   
   const handleUpdateGstreamerPipeline = (nodeId: string, pipeline: string) => {

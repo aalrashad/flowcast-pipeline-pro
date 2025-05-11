@@ -1,19 +1,22 @@
 
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Terminal, Play, Square } from 'lucide-react';
+import { Terminal, Play, Square, AlertCircle, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getNodeColor } from '@/lib/nodeUtils';
 import { pipelineTemplates } from '@/lib/gstreamerUtils';
+import { Progress } from '@/components/ui/progress';
+import { GstPipelineStatus } from '@/services/GstreamerService';
 
 interface GstreamerNodeProps {
   id: string;
   data: {
     label?: string;
     pipelineString?: string;
-    status?: 'idle' | 'playing' | 'paused' | 'error';
+    status?: 'idle' | 'playing' | 'paused' | 'error' | 'connecting' | 'reconnecting' | 'receiving' | 'buffering';
+    pipelineStatus?: GstPipelineStatus;
     onStart?: () => void;
     onStop?: () => void;
     onPipelineUpdate?: (pipeline: string) => void;
@@ -27,6 +30,38 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
   
   const label = data.label || 'GStreamer';
   const status = data.status || 'idle';
+  
+  // Map status to visual indicators
+  const getStatusColor = () => {
+    switch(status) {
+      case 'receiving':
+        return 'bg-green-900/20 text-green-500 border-green-500';
+      case 'connecting':
+      case 'reconnecting':
+      case 'buffering':
+        return 'bg-amber-900/20 text-amber-500 border-amber-500';
+      case 'error':
+        return 'bg-red-900/20 text-red-500 border-red-500';
+      case 'playing':
+        return 'bg-blue-900/20 text-blue-500 border-blue-500';
+      default:
+        return 'bg-gray-900/20 text-gray-500 border-gray-500';
+    }
+  };
+  
+  // Get status icon based on current state
+  const getStatusIcon = () => {
+    switch(status) {
+      case 'connecting':
+      case 'reconnecting':
+      case 'buffering':
+        return <RefreshCw className="w-3 h-3 mr-1 animate-spin" />;
+      case 'error':
+        return <AlertCircle className="w-3 h-3 mr-1" />;
+      default:
+        return null;
+    }
+  };
   
   const handlePlay = () => {
     if (data.onStart) {
@@ -55,6 +90,12 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
   };
   
   const nodeColor = getNodeColor('gstreamer');
+  const bufferLevel = data.pipelineStatus?.stats?.bufferLevel || 0;
+
+  // Poll for buffer level updates if the pipeline is active
+  useEffect(() => {
+    // This is already handled by the GStreamerService in a real implementation
+  }, []);
 
   return (
     <div className={`px-4 py-2 shadow-md rounded-md w-80 bg-[#222532] border-2 ${selected ? 'border-white' : 'border-[#ffcc00]'}`}>
@@ -67,16 +108,29 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
         </div>
         <Badge 
           variant="outline" 
-          className={`ml-auto text-xs ${
-            status === 'playing' ? 'bg-green-900/20 text-green-500 border-green-500' : 
-            status === 'error' ? 'bg-red-900/20 text-red-500 border-red-500' : 
-            status === 'paused' ? 'bg-amber-900/20 text-amber-500 border-amber-500' :
-            'bg-gray-900/20 text-gray-500 border-gray-500'
-          }`}
+          className={`ml-auto text-xs flex items-center ${getStatusColor()}`}
         >
+          {getStatusIcon()}
           {status}
         </Badge>
       </div>
+      
+      {/* Add buffer indicator if we're in a state that needs it */}
+      {['connecting', 'reconnecting', 'buffering', 'receiving'].includes(status) && (
+        <div className="mt-2 space-y-1">
+          <div className="flex justify-between items-center text-xs">
+            <span>Buffer</span>
+            <span>{bufferLevel.toFixed(1)}%</span>
+          </div>
+          <Progress value={bufferLevel} className="h-1" />
+        </div>
+      )}
+      
+      {data.pipelineStatus?.statusMessage && (
+        <div className="mt-1 text-xs text-gray-400">
+          {data.pipelineStatus.statusMessage}
+        </div>
+      )}
       
       <div className="mt-2">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -114,7 +168,7 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
           size="sm" 
           className="bg-green-900/20 text-green-500 border-green-500 hover:bg-green-900/30"
           onClick={handlePlay}
-          disabled={status === 'playing'}
+          disabled={['playing', 'connecting', 'reconnecting', 'buffering', 'receiving'].includes(status)}
         >
           <Play className="w-4 h-4 mr-1" />
           Play
@@ -124,7 +178,7 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
           size="sm" 
           className="bg-red-900/20 text-red-500 border-red-500 hover:bg-red-900/30"
           onClick={handleStop}
-          disabled={status === 'idle'}
+          disabled={['idle', 'paused', 'error'].includes(status)}
         >
           <Square className="w-4 h-4 mr-1" />
           Stop
