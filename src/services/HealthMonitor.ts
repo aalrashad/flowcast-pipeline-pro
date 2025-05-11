@@ -110,10 +110,10 @@ export class HealthMonitor {
     let severity: 'low' | 'medium' | 'high' | 'critical' = 'low';
     
     // Buffer health check
-    if (metrics.bufferHealth < 10) {
+    if (Number(metrics.bufferHealth) < 10) {
       issues.push('Critical buffer underrun');
       severity = 'critical';
-    } else if (metrics.bufferHealth < 30) {
+    } else if (Number(metrics.bufferHealth) < 30) {
       issues.push('Low buffer level');
       severity = Math.max(severity === 'low' ? 'medium' : severity, 'medium') as any;
     }
@@ -123,20 +123,20 @@ export class HealthMonitor {
       const dropRate = (Number(stats.framesDropped) / (Number(stats.framesReceived) + Number(stats.framesDropped))) * 100;
       metrics.dropRate = dropRate;
       
-      if (dropRate > 20) {
+      if (Number(dropRate) > 20) {
         issues.push(`High frame drop rate (${dropRate.toFixed(1)}%)`);
         severity = 'critical';
-      } else if (dropRate > 5) {
+      } else if (Number(dropRate) > 5) {
         issues.push(`Elevated frame drop rate (${dropRate.toFixed(1)}%)`);
         severity = Math.max(severity === 'low' ? 'high' : severity, 'high') as any;
       }
     }
     
     // Latency check
-    if (metrics.latency > 5000) {
+    if (Number(metrics.latency) > 5000) {
       issues.push(`High latency (${metrics.latency}ms)`);
       severity = Math.max(severity === 'low' ? 'high' : severity, 'high') as any;
-    } else if (metrics.latency > 2000) {
+    } else if (Number(metrics.latency) > 2000) {
       issues.push(`Elevated latency (${metrics.latency}ms)`);
       severity = Math.max(severity === 'low' ? 'medium' : severity, 'medium') as any;
     }
