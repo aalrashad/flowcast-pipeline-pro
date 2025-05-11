@@ -66,7 +66,8 @@ const FlowCanvas = () => {
     setSelectedNode(null);
   }, [setSelectedNode]);
   
-  const handleResize = useCallback((_, node, width, height) => {
+  // Fix the resize handler type
+  const handleResize = useCallback((event, node, width, height) => {
     updateNodeDimensions(node.id, width, height);
   }, [updateNodeDimensions]);
 
