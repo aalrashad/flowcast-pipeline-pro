@@ -66,9 +66,15 @@ const FlowCanvas = () => {
     setSelectedNode(null);
   }, [setSelectedNode]);
   
-  // Fix the resize handler type
-  const handleResize = useCallback((event, node, width, height) => {
-    updateNodeDimensions(node.id, width, height);
+  // Fix the resize handler to match ReactEventHandler type
+  const handleResize = useCallback((event) => {
+    // Extract node, width and height from the resize event data
+    if (event.target && event.target.__rf) {
+      const { node, width, height } = event.target.__rf;
+      if (node && width && height) {
+        updateNodeDimensions(node.id, width, height);
+      }
+    }
   }, [updateNodeDimensions]);
 
   const validateConnection = useCallback((connection) => {
@@ -198,7 +204,7 @@ const FlowCanvas = () => {
         nodesConnectable
         elementsSelectable
         nodeExtent={[[-Infinity, -Infinity], [Infinity, Infinity]]}
-        onResize={handleResize}
+        onNodeResize={handleResize}
       >
         <Background color="#2A2F3C" gap={16} />
         <Controls />
