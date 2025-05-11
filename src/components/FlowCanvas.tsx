@@ -9,7 +9,6 @@ import {
   Panel,
   NodeTypes,
   ConnectionLineType,
-  type ResizeParams,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useNodeStore } from '@/store/nodeStore';
@@ -42,7 +41,7 @@ const FlowCanvas = () => {
   const [fileBrowserOpen, setFileBrowserOpen] = useState(false);
   const [fileSelectedNodeId, setFileSelectedNodeId] = useState<string | null>(null);
   
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, setSelectedNode, updateNodeData, updateNodeDimensions, selectNdiSource, updateAudioMixer } = useNodeStore();
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, setSelectedNode, updateNodeData, selectNdiSource, updateAudioMixer } = useNodeStore();
   const reactFlowInstance = useReactFlow();
 
   const onNodeClick = useCallback((_, node) => {
@@ -66,14 +65,6 @@ const FlowCanvas = () => {
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
   }, [setSelectedNode]);
-  
-  // Fixed resize handler with the correct type
-  const handleResize = useCallback((event: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>, params: ResizeParams) => {
-    const { node, width, height } = params;
-    if (node && node.id && width && height) {
-      updateNodeDimensions(node.id, width, height);
-    }
-  }, [updateNodeDimensions]);
 
   const validateConnection = useCallback((connection) => {
     // Prevent connections to input nodes that already have connections
@@ -202,7 +193,6 @@ const FlowCanvas = () => {
         nodesConnectable
         elementsSelectable
         nodeExtent={[[-Infinity, -Infinity], [Infinity, Infinity]]}
-        onResize={handleResize}
       >
         <Background color="#2A2F3C" gap={16} />
         <Controls />
