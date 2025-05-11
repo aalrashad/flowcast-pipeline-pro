@@ -73,8 +73,47 @@ class WebSocketClient {
     });
   }
   
+  // Send message to WebSocket server with promise for response
+  sendWithResponse(type: string, payload: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const messageId = this.generateMessageId();
+      
+      // Create temporary handler for this message
+      const responseHandler = (data: any) => {
+        if (data.responseTo === messageId) {
+          // Remove the temporary handler
+          this.off('response', responseHandler);
+          
+          if (data.error) {
+            reject(new Error(data.error));
+          } else {
+            resolve(data);
+          }
+        }
+      };
+      
+      // Register temporary handler
+      this.on('response', responseHandler);
+      
+      // Send the message with ID
+      const success = this.send(type, payload, messageId);
+      
+      if (!success) {
+        // Clean up handler
+        this.off('response', responseHandler);
+        reject(new Error('Failed to send WebSocket message'));
+      }
+      
+      // Set timeout for response
+      setTimeout(() => {
+        this.off('response', responseHandler);
+        reject(new Error('WebSocket response timeout'));
+      }, 10000); // 10 second timeout
+    });
+  }
+  
   // Send message to WebSocket server
-  send(type: string, payload: any): boolean {
+  send(type: string, payload: any, messageId?: string): boolean {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       console.error('WebSocket not connected');
       return false;
@@ -84,7 +123,7 @@ class WebSocketClient {
       const message = JSON.stringify({
         type,
         payload,
-        id: this.generateMessageId(),
+        id: messageId || this.generateMessageId(),
         timestamp: Date.now()
       });
       
@@ -163,7 +202,7 @@ class WebSocketClient {
     const handlers = this.messageHandlers.get(data.type) || [];
     handlers.forEach(handler => {
       try {
-        handler(data.payload);
+        handler(data.payload || data);
       } catch (error) {
         console.error('Error in WebSocket message handler', error);
       }

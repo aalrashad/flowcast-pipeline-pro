@@ -352,35 +352,80 @@ export const useNodeStore = create<RFState>((set, get) => ({
   },
   
   selectNdiSource: (nodeId: string, sourceId: string, sourceName: string, ipAddress: string) => {
-    set({
-      nodes: get().nodes.map(node => {
+    // Create a placeholder pipeline until the real one is created
+    const placeholderPipeline: GstPipeline = {
+      id: `temp-${nodeId}-${sourceId}`,
+      description: `NDI Source: ${sourceName}`,
+      state: 'CONNECTING',
+      elements: [],
+      lastStateChange: new Date()
+    };
+    
+    // Update the node immediately with placeholder data
+    set(state => ({
+      pipelines: {
+        ...state.pipelines,
+        [nodeId]: placeholderPipeline
+      },
+      nodes: state.nodes.map(node => {
         if (node.id === nodeId) {
-          // Create a GStreamer NDI pipeline when selecting a source
-          const pipelineId = `ndi-${nodeId}-${sourceId}`;
-          const pipeline = gstreamerService.createNdiSourcePipeline(sourceName);
-          
-          // Store the pipeline reference
-          set(state => ({
-            pipelines: {
-              ...state.pipelines,
-              [nodeId]: pipeline
-            }
-          }));
-          
           return {
             ...node,
             data: {
               ...node.data,
               sourceName,
               ipAddress,
-              status: 'connected',
-              pipelineId: pipeline.id
+              status: 'connecting',
+              pipelineId: placeholderPipeline.id
             }
           };
         }
         return node;
       })
-    });
+    }));
+    
+    // Create the actual pipeline asynchronously
+    gstreamerService.createNdiSourcePipeline(sourceName)
+      .then(pipeline => {
+        // Update the store with the real pipeline once it's created
+        set(state => ({
+          pipelines: {
+            ...state.pipelines,
+            [nodeId]: pipeline
+          },
+          nodes: state.nodes.map(node => {
+            if (node.id === nodeId) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  pipelineId: pipeline.id
+                }
+              };
+            }
+            return node;
+          })
+        }));
+      })
+      .catch(error => {
+        console.error('Failed to create NDI pipeline:', error);
+        // Update node to show error state
+        set({
+          nodes: get().nodes.map(node => {
+            if (node.id === nodeId) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  status: 'error',
+                  errorMessage: error.message || 'Failed to create pipeline'
+                }
+              };
+            }
+            return node;
+          })
+        });
+      });
   },
   
   deleteNode: (nodeId) => {
@@ -487,13 +532,44 @@ export const useNodeStore = create<RFState>((set, get) => ({
       return;
     }
     
-    let pipeline: GstPipeline | null = null;
+    // Create a placeholder pipeline until the real one is created
+    const placeholderPipeline: GstPipeline = {
+      id: `temp-${sourceNodeId}-${encoderNodeId}`,
+      description: `Pipeline: ${sourceNode.data?.label || 'Source'} -> ${encoderNode.data?.label || 'Encoder'}`,
+      state: 'CONNECTING',
+      elements: [],
+      lastStateChange: new Date()
+    };
+    
+    // Store the placeholder pipeline
+    set(state => ({
+      pipelines: {
+        ...state.pipelines,
+        [sourceNodeId]: placeholderPipeline
+      },
+      nodes: state.nodes.map(node => {
+        if (node.id === sourceNodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              pipelineId: placeholderPipeline.id,
+              status: 'connecting'
+            }
+          };
+        }
+        return node;
+      })
+    }));
+    
+    // Now create the actual pipeline asynchronously
+    let pipelinePromise: Promise<GstPipeline> | null = null;
     
     // Create different pipelines based on source type
     if (sourceNode.type === 'srt-source' && sourceNode.data?.uri) {
       // Type assertion to handle the unknown type
       const sourceUri = sourceNode.data.uri as string;
-      pipeline = gstreamerService.createSrtSourcePipeline(
+      pipelinePromise = gstreamerService.createSrtSourcePipeline(
         sourceUri,
         {
           bitrate: encoderNode.data?.bitrate || 5000,
@@ -504,29 +580,55 @@ export const useNodeStore = create<RFState>((set, get) => ({
     } else if (sourceNode.type === 'ndi-source' && sourceNode.data?.sourceName) {
       // Type assertion to handle the unknown type
       const sourceName = sourceNode.data.sourceName as string;
-      pipeline = gstreamerService.createNdiSourcePipeline(sourceName);
+      pipelinePromise = gstreamerService.createNdiSourcePipeline(sourceName);
     }
     
-    if (pipeline) {
-      // Store the pipeline reference
-      set(state => ({
-        pipelines: {
-          ...state.pipelines,
-          [sourceNodeId]: pipeline as GstPipeline
-        },
-        nodes: state.nodes.map(node => {
-          if (node.id === sourceNodeId) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                pipelineId: pipeline?.id
+    if (pipelinePromise) {
+      pipelinePromise
+        .then(pipeline => {
+          // Store the actual pipeline once created
+          set(state => ({
+            pipelines: {
+              ...state.pipelines,
+              [sourceNodeId]: pipeline
+            },
+            nodes: state.nodes.map(node => {
+              if (node.id === sourceNodeId) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    pipelineId: pipeline.id
+                  }
+                };
               }
-            };
-          }
-          return node;
+              return node;
+            })
+          }));
+          
+          // Update status immediately
+          get().updateGstreamerNodeStatus(sourceNodeId);
         })
-      }));
+        .catch(error => {
+          console.error('Failed to create pipeline:', error);
+          
+          // Update node with error state
+          set({
+            nodes: get().nodes.map(node => {
+              if (node.id === sourceNodeId) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    status: 'error',
+                    errorMessage: error.message || 'Failed to create pipeline'
+                  }
+                };
+              }
+              return node;
+            })
+          });
+        });
     }
   },
   
@@ -537,39 +639,67 @@ export const useNodeStore = create<RFState>((set, get) => ({
       return;
     }
     
-    if (gstreamerService.startPipeline(pipeline.id)) {
-      set({
-        nodes: get().nodes.map(node => {
-          if (node.id === nodeId) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                status: 'connecting'
-              }
-            };
-          }
-          return node;
-        })
-      });
-      
-      // Start polling for pipeline status updates
-      const statusInterval = setInterval(() => {
-        get().updateGstreamerNodeStatus(nodeId);
-      }, 1000);
-      
-      // Store the interval ID
-      set(state => ({
-        ...state,
-        pipelines: {
-          ...state.pipelines,
-          [nodeId]: {
-            ...state.pipelines[nodeId],
-            statusInterval
-          }
+    // Update node status immediately to show feedback
+    set({
+      nodes: get().nodes.map(node => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              status: 'connecting'
+            }
+          };
         }
-      }));
-    }
+        return node;
+      })
+    });
+    
+    // Start the pipeline
+    gstreamerService.startPipeline(pipeline.id)
+      .then(success => {
+        if (!success) {
+          throw new Error('Failed to start pipeline');
+        }
+        
+        // Start polling for pipeline status updates
+        const statusInterval = setInterval(() => {
+          get().updateGstreamerNodeStatus(nodeId);
+        }, 1000);
+        
+        // Store the interval ID in the pipeline object
+        const updatedPipeline = {
+          ...pipeline,
+          statusInterval
+        };
+        
+        set(state => ({
+          pipelines: {
+            ...state.pipelines,
+            [nodeId]: updatedPipeline
+          }
+        }));
+      })
+      .catch(error => {
+        console.error('Failed to start pipeline:', error);
+        
+        // Update node with error state
+        set({
+          nodes: get().nodes.map(node => {
+            if (node.id === nodeId) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  status: 'error',
+                  errorMessage: error.message || 'Failed to start pipeline'
+                }
+              };
+            }
+            return node;
+          })
+        });
+      });
   },
   
   stopGstPipeline: (nodeId) => {
@@ -585,22 +715,34 @@ export const useNodeStore = create<RFState>((set, get) => ({
       clearInterval(statusInterval);
     }
     
-    if (gstreamerService.stopPipeline(pipeline.id)) {
-      set({
-        nodes: get().nodes.map(node => {
-          if (node.id === nodeId) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                status: 'paused'
-              }
-            };
-          }
-          return node;
-        })
+    gstreamerService.stopPipeline(pipeline.id)
+      .then(success => {
+        if (!success) {
+          throw new Error('Failed to stop pipeline');
+        }
+        
+        set({
+          nodes: get().nodes.map(node => {
+            if (node.id === nodeId) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  status: 'paused'
+                }
+              };
+            }
+            return node;
+          })
+        });
+      })
+      .catch(error => {
+        console.error('Failed to stop pipeline:', error);
+        
+        // Update node with error state if needed
+        // We might not update the node state here since stopping failure
+        // doesn't necessarily mean the pipeline isn't running anymore
       });
-    }
   },
   
   updateGstreamerNodeStatus: (nodeId) => {
