@@ -1,4 +1,3 @@
-
 import { Logger } from '../utils/Logger';
 
 type StatusCallback = (status: string, error?: any) => void;
@@ -233,8 +232,8 @@ class WebSocketClient {
 export const wsClient = new WebSocketClient(
   // Try to use the environment variable first
   import.meta.env.VITE_WEBSOCKET_URL || 
-  // Default to backend running on port 8080, regardless of the frontend port
-  `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8080`,
+  // Default to backend running on port 8080, with auto host detection
+  `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8080/gstreamer`,
   new Logger('WebSocketClient')
 );
 

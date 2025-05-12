@@ -39,6 +39,9 @@ pip install --no-cache-dir -r requirements.txt || {
     exit 1
 }
 
+# Set environment variables for server to listen on all interfaces
+export GSTREAMER_WS_HOST="0.0.0.0"
+
 # Start the server
 echo "Starting GStreamer WebSocket server..."
 python server.py

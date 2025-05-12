@@ -117,11 +117,12 @@ export function ConnectionStatus() {
                 {possiblePortConflict && (
                   <div className="mt-2 border-t border-gray-700 pt-2">
                     <p className="text-yellow-300 flex items-center">
-                      <Terminal className="h-3 w-3 mr-1" /> Port Configuration:
+                      <Terminal className="h-3 w-3 mr-1" /> Connection Info:
                     </p>
-                    <p className="mt-1">Both frontend and backend are running on port 8080.</p>
-                    <p className="mt-1">Access the app at: <code className="bg-black/30 px-1 py-0.5 rounded">http://localhost:8080</code></p>
-                    <p className="mt-1">If you're having issues, you can change the backend port:</p>
+                    <p className="mt-1">Frontend and backend are both on port 8080.</p>
+                    <p className="mt-1">Backend is now listening on all network interfaces (0.0.0.0).</p>
+                    <p className="mt-1">Current connection URL: <code className="bg-black/30 px-1 py-0.5 rounded">{wsClient.getDebugConnectionUrl()}</code></p>
+                    <p className="mt-1">If still having issues, try changing the backend port:</p>
                     <code className="bg-black/30 px-1 py-0.5 rounded block mt-1">GSTREAMER_WS_PORT=8081 ./start_server.sh</code>
                   </div>
                 )}

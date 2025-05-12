@@ -96,19 +96,19 @@ const Index = () => {
                     <li>Verify the backend server is running using <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh</code></li>
                     <li>Check the terminal output for any errors in the Python server</li>
                     <li>Ensure GStreamer and required Python packages are installed</li>
-                    <li>Note that the frontend now runs on port 3000 and the backend on port 8080</li>
+                    <li>Backend should now be listening on all interfaces (0.0.0.0)</li>
                   </ol>
 
                   <div className="text-amber-300 border-l-2 border-amber-400 pl-2 mt-3">
                     <p className="font-medium flex items-center">
-                      <Terminal className="h-4 w-4 mr-1" /> Port Configuration
+                      <Terminal className="h-4 w-4 mr-1" /> Connection Information
                     </p>
                     <p className="mt-1">
-                      The frontend now runs on port 3000, while the backend runs on port 8080.
+                      Both the frontend and backend use port 8080.
                     </p>
                     <ul className="list-disc pl-5 mt-1 space-y-1">
-                      <li>Access the app at: <code className="bg-black/30 px-1 py-0.5 rounded">http://localhost:3000</code></li>
-                      <li>Make sure the backend is running on port 8080</li>
+                      <li>WebSocket URL: <code className="bg-black/30 px-1 py-0.5 rounded">{wsClient.getDebugConnectionUrl()}</code></li>
+                      <li>Try running: <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh --recreate-venv</code></li>
                     </ul>
                   </div>
                   
