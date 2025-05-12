@@ -3,32 +3,56 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import wsClient from "@/services/WebSocketClient";
-import { Wifi, WifiOff } from "lucide-react";
+import { Wifi, WifiOff, AlertTriangle } from "lucide-react";
 
 export function ConnectionStatus() {
-  const [status, setStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
+  const [status, setStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'reconnecting'>('connecting');
   const [lastAttempt, setLastAttempt] = useState<Date | null>(null);
   const [attempts, setAttempts] = useState(0);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
 
   useEffect(() => {
-    const handleStatus = (connectionStatus: string) => {
+    const handleStatus = (connectionStatus: string, error?: any) => {
       if (connectionStatus === 'connected') {
         setStatus('connected');
         setAttempts(0);
+        setErrorDetails(null);
       } else if (connectionStatus === 'connecting') {
         setStatus('connecting');
         setLastAttempt(new Date());
+      } else if (connectionStatus === 'reconnecting') {
+        setStatus('reconnecting');
+        setLastAttempt(new Date());
+        if (error?.attempt) {
+          setAttempts(error.attempt);
+        } else {
+          setAttempts(prev => prev + 1);
+        }
+      } else if (connectionStatus === 'error') {
+        setStatus('disconnected');
+        setLastAttempt(new Date());
         setAttempts(prev => prev + 1);
+        // Store error details if available
+        if (error?.message) {
+          setErrorDetails(error.message);
+        } else if (error?.code) {
+          setErrorDetails(`Error code: ${error.code}`);
+        }
       } else {
         setStatus('disconnected');
+        setLastAttempt(new Date());
+        // For close events, show the close code
+        if (error?.code) {
+          setErrorDetails(`Close code: ${error.code}`);
+        }
       }
     };
 
     // Subscribe to WebSocket status updates
     const unsubscribe = wsClient.onStatus(handleStatus);
 
-    // Ping connection status on mount
-    wsClient.getConnectionStatus();
+    // Initialize attempts from WebSocket client
+    setAttempts(wsClient.getReconnectAttempts());
 
     return () => {
       unsubscribe();
@@ -41,10 +65,11 @@ export function ConnectionStatus() {
         <TooltipTrigger asChild>
           <div className="flex items-center">
             <Badge 
-              variant={status === 'connected' ? 'success' : status === 'connecting' ? 'warning' : 'destructive'}
+              variant={status === 'connected' ? 'success' : status === 'connecting' || status === 'reconnecting' ? 'warning' : 'destructive'}
               className={`cursor-pointer flex items-center gap-1 h-6 ${
                 status === 'connected' ? 'bg-green-700 hover:bg-green-800' : 
                 status === 'connecting' ? 'bg-yellow-600 hover:bg-yellow-700' : 
+                status === 'reconnecting' ? 'bg-orange-600 hover:bg-orange-700' : 
                 'bg-red-700 hover:bg-red-800'
               }`}
             >
@@ -55,6 +80,10 @@ export function ConnectionStatus() {
               ) : status === 'connecting' ? (
                 <>
                   <Wifi className="w-3 h-3 animate-pulse" /> Connecting
+                </>
+              ) : status === 'reconnecting' ? (
+                <>
+                  <Wifi className="w-3 h-3 animate-pulse" /> Reconnecting
                 </>
               ) : (
                 <>
@@ -67,13 +96,19 @@ export function ConnectionStatus() {
         <TooltipContent>
           <div className="text-xs">
             <p>Backend connection: <strong>{status}</strong></p>
-            {status === 'disconnected' && (
+            {status !== 'connected' && (
               <>
                 <p>Reconnection attempts: {attempts}</p>
                 {lastAttempt && (
                   <p>Last attempt: {lastAttempt.toLocaleTimeString()}</p>
                 )}
-                <p>Check if the backend server is running.</p>
+                {errorDetails && (
+                  <p className="text-red-300 flex items-center mt-1">
+                    <AlertTriangle className="h-3 w-3 mr-1" />
+                    {errorDetails}
+                  </p>
+                )}
+                <p className="mt-1">Check if the backend server is running.</p>
               </>
             )}
           </div>

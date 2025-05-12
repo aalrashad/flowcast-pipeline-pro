@@ -1,3 +1,4 @@
+
 import { Logger } from '../utils/Logger';
 
 type StatusCallback = (status: string, error?: any) => void;
@@ -14,6 +15,7 @@ class WebSocketClient {
   private reconnectInterval: number = 3000; // Initial reconnect interval
   private maxReconnectInterval: number = 60000; // Maximum reconnect interval
   private reconnectAttempts: number = 0; // Number of reconnection attempts
+  private lastConnectionUrl: string = ""; // Store the last URL we tried to connect to
 
   constructor(url: string, logger: Logger) {
     this.url = url;
@@ -22,6 +24,18 @@ class WebSocketClient {
 
   public connect(): Promise<void> {
     return new Promise((resolve, reject) => {
+      if (this.connected) {
+        this.logger.info('WebSocket already connected');
+        resolve();
+        return;
+      }
+      
+      if (this.connecting) {
+        this.logger.info('WebSocket connection already in progress');
+        resolve();
+        return;
+      }
+      
       this.connecting = true;
       
       // Determine if we need to use secure WebSocket based on the current protocol
@@ -32,11 +46,15 @@ class WebSocketClient {
         this.logger.info('Using secure WebSocket connection');
       }
       
+      // Store the URL we're connecting to for debugging
+      this.lastConnectionUrl = wsUrl;
+      
       try {
         this.ws = new WebSocket(wsUrl);
       } catch (error) {
         this.connecting = false;
         this.logger.error('Failed to create WebSocket', error);
+        this.invokeStatusCallbacks('error', error);
         reject(error);
         return;
       }
@@ -75,7 +93,7 @@ class WebSocketClient {
         this.logger.error('WebSocket error:', error);
         this.invokeStatusCallbacks('error', error);
         reject(error);
-        this.reconnect();
+        // Don't reconnect here, let onclose handle it
       };
     });
   }
@@ -104,7 +122,8 @@ class WebSocketClient {
     this.reconnectInterval = Math.min(this.reconnectInterval * 1.5, this.maxReconnectInterval);
 
     this.logger.info(`Attempting to reconnect in ${this.reconnectInterval}ms (attempt ${this.reconnectAttempts})`);
-    this.connecting = true;
+    this.invokeStatusCallbacks('reconnecting', { attempt: this.reconnectAttempts, delay: this.reconnectInterval });
+    
     setTimeout(() => {
       this.connect()
         .catch(() => {
@@ -129,13 +148,41 @@ class WebSocketClient {
 
   public onStatus(callback: StatusCallback): () => void {
     this.statusCallbacks.push(callback);
+    
+    // Immediately call with current status if available
+    if (this.connected) {
+      try {
+        callback('connected');
+      } catch (error) {
+        this.logger.error('Error in status callback', error);
+      }
+    } else if (this.connecting) {
+      try {
+        callback('connecting');
+      } catch (error) {
+        this.logger.error('Error in status callback', error);
+      }
+    } else {
+      try {
+        callback('disconnected');
+      } catch (error) {
+        this.logger.error('Error in status callback', error);
+      }
+    }
+    
     return () => {
       this.statusCallbacks = this.statusCallbacks.filter(cb => cb !== callback);
     };
   }
 
   private invokeStatusCallbacks(status: string, error?: any): void {
-    this.statusCallbacks.forEach(callback => callback(status, error));
+    this.statusCallbacks.forEach(callback => {
+      try {
+        callback(status, error);
+      } catch (err) {
+        this.logger.error('Error in status callback', err);
+      }
+    });
   }
 
   public on(type: string, callback: MessageCallback): () => void {
@@ -151,7 +198,13 @@ class WebSocketClient {
   private invokeMessageCallbacks(type: string, data: any): void {
     const callbacks = this.messageCallbacks[type];
     if (callbacks) {
-      callbacks.forEach(callback => callback(data));
+      callbacks.forEach(callback => {
+        try {
+          callback(data);
+        } catch (error) {
+          this.logger.error('Error in message callback', error);
+        }
+      });
     }
   }
 
@@ -159,10 +212,20 @@ class WebSocketClient {
   public getConnectionStatus(): string {
     return this.connected ? 'connected' : (this.connecting ? 'connecting' : 'disconnected');
   }
+  
+  // Get the last URL we tried to connect to for debugging
+  public getDebugConnectionUrl(): string {
+    return this.lastConnectionUrl || this.url;
+  }
 
   // Add method to check if secure connection is needed
   private isSecureConnection(): boolean {
     return window.location.protocol === 'https:';
+  }
+  
+  // Get the number of reconnection attempts
+  public getReconnectAttempts(): number {
+    return this.reconnectAttempts;
   }
 }
 

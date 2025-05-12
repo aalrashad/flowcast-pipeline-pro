@@ -10,12 +10,14 @@ import NodeDetailsPanel from "@/components/NodeDetailsPanel";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, ExternalLink } from "lucide-react";
+import { AlertCircle, ExternalLink, HelpCircle, Terminal } from "lucide-react";
 import wsClient from "@/services/WebSocketClient";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
   const [showMonitor, setShowMonitor] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
+  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const { selectedNode } = useNodeStore();
   
   useEffect(() => {
@@ -28,6 +30,11 @@ const Index = () => {
         toast.error("Disconnected from streaming server");
       }
     });
+
+    // Try to connect when component mounts
+    wsClient.connect().catch(error => {
+      console.error("Failed to connect to backend", error);
+    });
     
     return () => unsubscribe();
   }, []);
@@ -37,6 +44,14 @@ const Index = () => {
     if (!showMonitor) {
       toast.info("Stream monitor activated");
     }
+  };
+
+  const manualReconnect = () => {
+    toast.info("Attempting to reconnect...");
+    wsClient.connect().catch(error => {
+      console.error("Reconnection failed", error);
+      toast.error("Reconnection failed. Please check server status.");
+    });
   };
 
   // Determine if we're running on HTTPS but the backend is likely using WS
@@ -56,11 +71,54 @@ const Index = () => {
             <AlertDescription>
               <p className="mb-2">The GStreamer backend server is not connected. Make sure it's running using <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh</code></p>
               
-              {isSecurityIssue && (
-                <p className="text-yellow-300 border-l-2 border-yellow-400 pl-2 mt-1">
-                  You appear to be using HTTPS, which may prevent connecting to an insecure WebSocket server.
-                  Try accessing this application using HTTP instead, or configure your server to use a secure WebSocket connection (WSS).
-                </p>
+              <div className="flex gap-2 mt-2">
+                <Button size="sm" variant="outline" onClick={manualReconnect}>
+                  Try Reconnect
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={() => setShowTroubleshooting(!showTroubleshooting)}
+                >
+                  <HelpCircle className="h-4 w-4 mr-1" />
+                  {showTroubleshooting ? "Hide Troubleshooting" : "Show Troubleshooting"}
+                </Button>
+              </div>
+              
+              {showTroubleshooting && (
+                <div className="mt-3 pt-3 border-t border-red-800/50">
+                  <h3 className="text-sm font-medium mb-1">Connection Troubleshooting Steps:</h3>
+                  
+                  <ol className="list-decimal pl-5 text-sm space-y-1">
+                    <li>Verify the backend server is running using <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh</code></li>
+                    <li>Check the terminal output for any errors in the Python server</li>
+                    <li>Ensure GStreamer and required Python packages are installed</li>
+                    <li>Verify that port 8080 is not blocked by a firewall</li>
+                  </ol>
+
+                  {isSecurityIssue && (
+                    <div className="text-yellow-300 border-l-2 border-yellow-400 pl-2 mt-3">
+                      <p className="font-medium flex items-center">
+                        <Terminal className="h-4 w-4 mr-1" /> Security Issue Detected
+                      </p>
+                      <p className="mt-1">
+                        You are accessing this application over HTTPS, but trying to connect to a non-secure WebSocket (ws://).
+                      </p>
+                      <p className="mt-1">
+                        Try one of these solutions:
+                      </p>
+                      <ul className="list-disc pl-5 mt-1 space-y-1">
+                        <li>Access this application using HTTP instead of HTTPS</li>
+                        <li>Configure your server to use a secure WebSocket connection (WSS)</li>
+                        <li>Use a reverse proxy to handle secure connections</li>
+                      </ul>
+                    </div>
+                  )}
+                  
+                  <div className="mt-3 text-xs text-gray-400">
+                    Current WebSocket URL: {wsClient.getDebugConnectionUrl()}
+                  </div>
+                </div>
               )}
             </AlertDescription>
           </Alert>
