@@ -129,7 +129,7 @@ export function ConnectionStatus() {
                   <p className="text-yellow-300 flex items-center">
                     <Terminal className="h-3 w-3 mr-1" /> Connection Info:
                   </p>
-                  <p className="mt-1">Backend should be running on port 8080 and listening on all interfaces (0.0.0.0).</p>
+                  <p className="mt-1">Backend should be running on port 8080 and frontend now runs on port 3000.</p>
                   <p className="mt-1">Current URL: <code className="bg-black/30 px-1 py-0.5 rounded">{currentUrl}</code></p>
                   <p className="mt-1">Common issues:</p>
                   <ul className="list-disc ml-5 mt-1">
