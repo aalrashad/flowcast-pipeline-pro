@@ -10,7 +10,7 @@ import NodeDetailsPanel from "@/components/NodeDetailsPanel";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ExternalLink } from "lucide-react";
 import wsClient from "@/services/WebSocketClient";
 
 const Index = () => {
@@ -39,6 +39,9 @@ const Index = () => {
     }
   };
 
+  // Determine if we're running on HTTPS but the backend is likely using WS
+  const isSecurityIssue = window.location.protocol === 'https:' && connectionStatus === 'disconnected';
+
   return (
     <TooltipProvider>
       <div className="flex flex-col h-screen bg-[#1A1F2C] text-white overflow-hidden">
@@ -51,7 +54,14 @@ const Index = () => {
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Connection Error</AlertTitle>
             <AlertDescription>
-              The GStreamer backend server is not connected. Make sure it's running using ./start_server.sh
+              <p className="mb-2">The GStreamer backend server is not connected. Make sure it's running using <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh</code></p>
+              
+              {isSecurityIssue && (
+                <p className="text-yellow-300 border-l-2 border-yellow-400 pl-2 mt-1">
+                  You appear to be using HTTPS, which may prevent connecting to an insecure WebSocket server.
+                  Try accessing this application using HTTP instead, or configure your server to use a secure WebSocket connection (WSS).
+                </p>
+              )}
             </AlertDescription>
           </Alert>
         )}

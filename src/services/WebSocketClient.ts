@@ -1,4 +1,3 @@
-
 import { Logger } from '../utils/Logger';
 
 type StatusCallback = (status: string, error?: any) => void;
@@ -24,7 +23,23 @@ class WebSocketClient {
   public connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.connecting = true;
-      this.ws = new WebSocket(this.url);
+      
+      // Determine if we need to use secure WebSocket based on the current protocol
+      let wsUrl = this.url;
+      if (window.location.protocol === 'https:' && wsUrl.startsWith('ws://')) {
+        // Convert ws:// to wss:// when on https
+        wsUrl = wsUrl.replace('ws://', 'wss://');
+        this.logger.info('Using secure WebSocket connection');
+      }
+      
+      try {
+        this.ws = new WebSocket(wsUrl);
+      } catch (error) {
+        this.connecting = false;
+        this.logger.error('Failed to create WebSocket', error);
+        reject(error);
+        return;
+      }
 
       this.ws.onopen = () => {
         this.connected = true;
@@ -144,14 +159,19 @@ class WebSocketClient {
   public getConnectionStatus(): string {
     return this.connected ? 'connected' : (this.connecting ? 'connecting' : 'disconnected');
   }
+
+  // Add method to check if secure connection is needed
+  private isSecureConnection(): boolean {
+    return window.location.protocol === 'https:';
+  }
 }
 
-// Update WebSocket URL to make it more flexible with fallbacks
+// Update WebSocket URL to make it more flexible with fallbacks and secure connections
 export const wsClient = new WebSocketClient(
   // Try to use the environment variable first
   import.meta.env.VITE_WEBSOCKET_URL || 
-  // If running on the same host, auto-detect the hostname
-  `ws://${window.location.hostname}:8080`,
+  // If running on the same host, auto-detect the hostname and protocol
+  `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8080`,
   new Logger('WebSocketClient')
 );
 
