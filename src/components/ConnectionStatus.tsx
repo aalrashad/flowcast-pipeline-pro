@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import wsClient from "@/services/WebSocketClient";
-import { Wifi, WifiOff, AlertTriangle } from "lucide-react";
+import { Wifi, WifiOff, AlertTriangle, Terminal } from "lucide-react";
 
 export function ConnectionStatus() {
   const [status, setStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'reconnecting'>('connecting');
@@ -59,6 +59,10 @@ export function ConnectionStatus() {
     };
   }, []);
 
+  // Check if there might be a port conflict
+  const possiblePortConflict = status === 'disconnected' && 
+    (errorDetails?.includes('1006') || !errorDetails);
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -109,6 +113,20 @@ export function ConnectionStatus() {
                   </p>
                 )}
                 <p className="mt-1">Check if the backend server is running.</p>
+                
+                {possiblePortConflict && (
+                  <div className="mt-2 border-t border-gray-700 pt-2">
+                    <p className="text-yellow-300 flex items-center">
+                      <Terminal className="h-3 w-3 mr-1" /> Possible issue detected:
+                    </p>
+                    <p className="mt-1">The frontend server is running on port 8080, which conflicts with the backend.</p>
+                    <p className="mt-1">Try one of these solutions:</p>
+                    <ul className="list-disc pl-5 mt-1 space-y-1">
+                      <li>Change Vite frontend port: <code className="bg-black/30 px-1 py-0.5 rounded">npm run dev -- --port 3000</code></li>
+                      <li>Change the backend port: <code className="bg-black/30 px-1 py-0.5 rounded">GSTREAMER_WS_PORT=8081 ./start_server.sh</code></li>
+                    </ul>
+                  </div>
+                )}
               </>
             )}
           </div>

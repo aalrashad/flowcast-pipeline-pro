@@ -13,10 +13,23 @@ if ! pkg-config --exists gstreamer-1.0; then
     exit 1
 fi
 
-# Install required packages if not already installed
+# Create a virtual environment if it doesn't exist
+if [ ! -d "venv" ]; then
+    echo "Creating Python virtual environment..."
+    python3 -m venv venv || { echo "Failed to create virtual environment. Make sure python3-venv is installed."; exit 1; }
+fi
+
+# Activate virtual environment
+echo "Activating virtual environment..."
+source venv/bin/activate || { echo "Failed to activate virtual environment."; exit 1; }
+
+# Install required packages in virtual environment
 echo "Installing required Python packages..."
-pip3 install -r requirements.txt
+pip install -r requirements.txt || { echo "Failed to install required packages."; exit 1; }
 
 # Start the server
 echo "Starting GStreamer WebSocket server..."
-python3 server.py
+python server.py
+
+# Deactivate virtual environment when script exits
+deactivate
