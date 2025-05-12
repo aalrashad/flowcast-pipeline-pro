@@ -1,8 +1,7 @@
-
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import wsClient, { allWebSocketUrls } from "@/services/WebSocketClient";
+import wsClient, { allWebSocketUrls } from "@/services/websocket/WebSocketClient";
 import { Wifi, WifiOff, AlertTriangle, Terminal, Loader2 } from "lucide-react";
 
 export function ConnectionStatus() {

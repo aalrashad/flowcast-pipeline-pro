@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Providers } from "@/lib/providers";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import wsClient from "./services/WebSocketClient";
+import wsClient from "./services/websocket/WebSocketClient";
 import streamManager from "./services/StreamManager";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";

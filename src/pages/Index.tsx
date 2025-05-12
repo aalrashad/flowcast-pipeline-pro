@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import Sidebar from "@/components/Sidebar";
@@ -11,7 +10,7 @@ import ConnectionStatus from "@/components/ConnectionStatus";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, ExternalLink, HelpCircle, Terminal } from "lucide-react";
-import wsClient, { allWebSocketUrls } from "@/services/WebSocketClient";
+import wsClient, { allWebSocketUrls } from "@/services/websocket/WebSocketClient";
 import { Button } from "@/components/ui/button";
 
 const Index = () => {

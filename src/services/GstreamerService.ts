@@ -2,7 +2,7 @@
  * GStreamer Service
  * Provides an interface to interact with GStreamer pipelines via WebSocket
  */
-import wsClient from './WebSocketClient';
+import wsClient from './websocket/WebSocketClient';
 import { 
   parsePipelineString, 
   generatePipelineString, 
