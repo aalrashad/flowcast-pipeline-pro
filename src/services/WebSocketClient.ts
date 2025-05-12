@@ -146,9 +146,12 @@ class WebSocketClient {
   }
 }
 
-// Fix: Use import.meta.env instead of process.env
+// Update WebSocket URL to make it more flexible with fallbacks
 export const wsClient = new WebSocketClient(
-  import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8080',
+  // Try to use the environment variable first
+  import.meta.env.VITE_WEBSOCKET_URL || 
+  // If running on the same host, auto-detect the hostname
+  `ws://${window.location.hostname}:8080`,
   new Logger('WebSocketClient')
 );
 
