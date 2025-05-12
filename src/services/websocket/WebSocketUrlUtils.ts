@@ -12,20 +12,16 @@ export function getWebSocketUrls(): string[] {
   return [
     // First try the environment variable if available
     import.meta.env.VITE_WEBSOCKET_URL,
-    // Try with explicit path and specified port
+    // Try explicit hostname with port 8080
     `${protocol}//${hostname}:8080/gstreamer`,
     // Try without path
     `${protocol}//${hostname}:8080`,
-    // Try IP address with explicit port
-    `${protocol}//127.0.0.1:8080/gstreamer`,
-    // Try localhost with explicit port
-    `${protocol}//localhost:8080/gstreamer`,
-    // Try with the same port as the frontend
+    // Try with IP address with fixed port
+    `ws://127.0.0.1:8080/gstreamer`,
+    // Try with localhost with fixed port
+    `ws://localhost:8080/gstreamer`,
+    // Try with the same port as the frontend as fallback
     `${protocol}//${hostname}:${port}/gstreamer`,
-    // Try with IP and same port as frontend
-    `${protocol}//127.0.0.1:${port}/gstreamer`,
-    // Try with localhost and same port as frontend
-    `${protocol}//localhost:${port}/gstreamer`,
   ].filter(Boolean) as string[]; // Filter out undefined/null values
 }
 
