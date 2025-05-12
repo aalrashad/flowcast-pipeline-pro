@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useNodeStore } from "@/store/nodeStore";
 import StreamMonitor from "@/components/StreamMonitor";
 import NodeDetailsPanel from "@/components/NodeDetailsPanel";
+import ConnectionStatus from "@/components/ConnectionStatus";
 import { toast } from "sonner";
 
 const Index = () => {
@@ -24,6 +25,9 @@ const Index = () => {
     <TooltipProvider>
       <div className="flex flex-col h-screen bg-[#1A1F2C] text-white overflow-hidden">
         <Navbar toggleMonitor={toggleMonitor} />
+        <div className="absolute right-2 top-2 z-10">
+          <ConnectionStatus />
+        </div>
         <div className="flex flex-1 overflow-hidden">
           <Sidebar />
           <div className="flex-1 relative overflow-hidden">
