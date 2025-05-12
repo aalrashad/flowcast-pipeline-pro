@@ -87,7 +87,8 @@ export class HealthMonitor {
       return {
         healthy: false,
         status: 'shutting_down',
-        timestamp: new Date()
+        timestamp: new Date(),
+        duration: 0 // Adding the required duration property
       };
     }
 
