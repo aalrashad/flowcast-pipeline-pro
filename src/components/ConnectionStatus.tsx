@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import wsClient from "@/services/WebSocketClient";
+import wsClient, { allWebSocketUrls } from "@/services/WebSocketClient";
 import { Wifi, WifiOff, AlertTriangle, Terminal } from "lucide-react";
 
 export function ConnectionStatus() {
@@ -119,10 +119,15 @@ export function ConnectionStatus() {
                     <p className="text-yellow-300 flex items-center">
                       <Terminal className="h-3 w-3 mr-1" /> Connection Info:
                     </p>
-                    <p className="mt-1">Frontend and backend are both on port 8080.</p>
-                    <p className="mt-1">Backend is now listening on all network interfaces (0.0.0.0).</p>
+                    <p className="mt-1">Backend should be listening on all interfaces (0.0.0.0).</p>
                     <p className="mt-1">Current connection URL: <code className="bg-black/30 px-1 py-0.5 rounded">{wsClient.getDebugConnectionUrl()}</code></p>
-                    <p className="mt-1">If still having issues, try changing the backend port:</p>
+                    <p className="mt-1">Tried URLs:</p>
+                    <div className="mt-1 max-h-20 overflow-y-auto text-[10px]">
+                      {allWebSocketUrls.map((url, idx) => (
+                        <code key={idx} className="bg-black/30 px-1 py-0.5 rounded block mb-1">{url}</code>
+                      ))}
+                    </div>
+                    <p className="mt-1">If still having issues, try running:</p>
                     <code className="bg-black/30 px-1 py-0.5 rounded block mt-1">GSTREAMER_WS_PORT=8081 ./start_server.sh</code>
                   </div>
                 )}

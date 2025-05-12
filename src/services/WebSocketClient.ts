@@ -49,6 +49,7 @@ class WebSocketClient {
       this.lastConnectionUrl = wsUrl;
       
       try {
+        this.logger.info(`Attempting to connect to WebSocket: ${wsUrl}`);
         this.ws = new WebSocket(wsUrl);
       } catch (error) {
         this.connecting = false;
@@ -81,7 +82,7 @@ class WebSocketClient {
       this.ws.onclose = (event) => {
         this.connecting = false;
         this.connected = false;
-        this.logger.warn('WebSocket disconnected', event.code, event.reason);
+        this.logger.warn(`WebSocket disconnected ${event.code} ${event.reason}`);
         this.invokeStatusCallbacks('disconnected', { code: event.code, reason: event.reason });
         this.reconnect();
       };
@@ -228,13 +229,33 @@ class WebSocketClient {
   }
 }
 
-// Update WebSocket URL to make it more flexible with fallbacks and secure connections
+// Create multiple potential WebSocket URLs to try
+function getWebSocketUrls(): string[] {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const hostname = window.location.hostname;
+  
+  // Try different combinations of host/port/path
+  return [
+    // First try the environment variable if available
+    import.meta.env.VITE_WEBSOCKET_URL,
+    // Try with explicit path
+    `${protocol}//${hostname}:8080/gstreamer`,
+    // Try without path
+    `${protocol}//${hostname}:8080`,
+    // Try IP address
+    `${protocol}//127.0.0.1:8080/gstreamer`,
+    // Try different domain
+    `${protocol}//localhost:8080/gstreamer`,
+  ].filter(Boolean) as string[]; // Filter out undefined/null values
+}
+
+// Export a websocket client with our primary URL
 export const wsClient = new WebSocketClient(
-  // Try to use the environment variable first
-  import.meta.env.VITE_WEBSOCKET_URL || 
-  // Default to backend running on port 8080, with auto host detection
-  `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8080/gstreamer`,
+  getWebSocketUrls()[0] || `ws://localhost:8080/gstreamer`,
   new Logger('WebSocketClient')
 );
+
+// Export all potential URLs for debugging
+export const allWebSocketUrls = getWebSocketUrls();
 
 export default wsClient;

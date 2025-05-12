@@ -11,7 +11,7 @@ import ConnectionStatus from "@/components/ConnectionStatus";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, ExternalLink, HelpCircle, Terminal } from "lucide-react";
-import wsClient from "@/services/WebSocketClient";
+import wsClient, { allWebSocketUrls } from "@/services/WebSocketClient";
 import { Button } from "@/components/ui/button";
 
 const Index = () => {
@@ -96,7 +96,8 @@ const Index = () => {
                     <li>Verify the backend server is running using <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh</code></li>
                     <li>Check the terminal output for any errors in the Python server</li>
                     <li>Ensure GStreamer and required Python packages are installed</li>
-                    <li>Backend should now be listening on all interfaces (0.0.0.0)</li>
+                    <li>Backend should now be listening on all network interfaces (0.0.0.0)</li>
+                    <li>Try running with: <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh --recreate-venv</code></li>
                   </ol>
 
                   <div className="text-amber-300 border-l-2 border-amber-400 pl-2 mt-3">
@@ -108,8 +109,15 @@ const Index = () => {
                     </p>
                     <ul className="list-disc pl-5 mt-1 space-y-1">
                       <li>WebSocket URL: <code className="bg-black/30 px-1 py-0.5 rounded">{wsClient.getDebugConnectionUrl()}</code></li>
-                      <li>Try running: <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh --recreate-venv</code></li>
+                      <li>Try running: <code className="bg-black/30 px-1 py-0.5 rounded">python server.py</code> directly from your terminal</li>
                     </ul>
+                    
+                    <p className="mt-2 font-medium">Attempted WebSocket URLs:</p>
+                    <div className="mt-1 max-h-24 overflow-y-auto">
+                      {allWebSocketUrls.map((url, index) => (
+                        <code key={index} className="bg-black/30 px-1 py-0.5 rounded block mb-1 text-xs">{url}</code>
+                      ))}
+                    </div>
                   </div>
                   
                   {isSecurityIssue && (
