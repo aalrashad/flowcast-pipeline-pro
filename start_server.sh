@@ -13,37 +13,88 @@ if ! pkg-config --exists gstreamer-1.0; then
     exit 1
 fi
 
+# Process command line arguments
+RECREATE_VENV=0
+for arg in "$@"; do
+    case $arg in
+        --recreate-venv)
+            RECREATE_VENV=1
+            echo "Will recreate virtual environment..."
+            shift
+            ;;
+        *)
+            # Unknown option
+            ;;
+    esac
+done
+
+# Remove the virtual environment if it exists and --recreate-venv was passed
+if [ $RECREATE_VENV -eq 1 ] && [ -d "venv" ]; then
+    echo "Removing existing virtual environment..."
+    rm -rf venv
+fi
+
 # Create a virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
     echo "Creating Python virtual environment..."
-    python3 -m venv venv || { echo "Failed to create virtual environment. Make sure python3-venv is installed."; exit 1; }
-fi
-
-# Remove the virtual environment if it exists but is causing issues
-if [ "$1" == "--recreate-venv" ]; then
-    echo "Recreating Python virtual environment..."
-    rm -rf venv
-    python3 -m venv venv || { echo "Failed to recreate virtual environment. Make sure python3-venv is installed."; exit 1; }
+    python3 -m venv venv || { 
+        echo "Failed to create virtual environment."
+        echo "Make sure python3-venv is installed or try:"
+        echo "sudo apt-get install python3-venv"
+        exit 1
+    }
+    # Flag that we need to install packages
+    INSTALL_PACKAGES=1
+else
+    INSTALL_PACKAGES=0
 fi
 
 # Activate virtual environment
 echo "Activating virtual environment..."
-source venv/bin/activate || { echo "Failed to activate virtual environment."; exit 1; }
-
-# Install required packages in virtual environment
-echo "Installing required Python packages..."
-pip install --no-cache-dir -r requirements.txt || { 
-    echo "Failed to install required packages."
-    echo "If facing 'externally-managed-environment' error, try running with --recreate-venv option."
-    deactivate
+source venv/bin/activate || { 
+    echo "Failed to activate virtual environment."
     exit 1
 }
 
+# Install required packages if we created a new venv or --recreate-venv was passed
+if [ $RECREATE_VENV -eq 1 ] || [ $INSTALL_PACKAGES -eq 1 ]; then
+    echo "Installing required Python packages..."
+    pip install --no-cache-dir -r requirements.txt || { 
+        echo "Failed to install required packages."
+        
+        # Check if the issue is with an externally managed environment
+        if pip --version | grep -q "pip 23"; then
+            echo ""
+            echo "Detected 'externally-managed-environment' error."
+            echo "Trying to fix with '--break-system-packages' flag..."
+            pip install --break-system-packages -r requirements.txt || {
+                echo "Still failed. Please try manually running:"
+                echo "python3 -m pip install -r requirements.txt --break-system-packages"
+                deactivate
+                exit 1
+            }
+        else
+            echo "If facing 'externally-managed-environment' error, try running with --recreate-venv option."
+            deactivate
+            exit 1
+        fi
+    }
+fi
+
 # Set environment variables for server to listen on all interfaces
-export GSTREAMER_WS_HOST="0.0.0.0"
+export GSTREAMER_WS_HOST="0.0.0.0"  # Listen on all interfaces
+export GSTREAMER_WS_PORT="8080"     # Use port 8080
+
+echo ""
+echo "======================================"
+echo "Starting GStreamer WebSocket server..."
+echo "Listening on all interfaces (0.0.0.0)"
+echo "Port: 8080"
+echo "WebSocket path: /gstreamer"
+echo "======================================"
+echo ""
 
 # Start the server
-echo "Starting GStreamer WebSocket server..."
 python server.py
 
 # Deactivate virtual environment when script exits

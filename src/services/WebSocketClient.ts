@@ -15,6 +15,9 @@ class WebSocketClient {
   private maxReconnectInterval: number = 60000; // Maximum reconnect interval
   private reconnectAttempts: number = 0; // Number of reconnection attempts
   private lastConnectionUrl: string = ""; // Store the last URL we tried to connect to
+  private connectionAttemptTimeout: number | null = null;
+  private maxTimeoutAttempts: number = 3;
+  private timeoutAttempts: number = 0;
 
   constructor(url: string, logger: Logger) {
     this.url = url;
@@ -36,102 +39,164 @@ class WebSocketClient {
       }
       
       this.connecting = true;
+      this.invokeStatusCallbacks('connecting');
       
-      // Determine if we need to use secure WebSocket based on the current protocol
-      let wsUrl = this.url;
-      if (window.location.protocol === 'https:' && wsUrl.startsWith('ws://')) {
-        // Convert ws:// to wss:// when on https
-        wsUrl = wsUrl.replace('ws://', 'wss://');
-        this.logger.info('Using secure WebSocket connection');
-      }
-      
-      // Store the URL we're connecting to for debugging
-      this.lastConnectionUrl = wsUrl;
-      
-      try {
-        this.logger.info(`Attempting to connect to WebSocket: ${wsUrl}`);
-        this.ws = new WebSocket(wsUrl);
-      } catch (error) {
-        this.connecting = false;
-        this.logger.error('Failed to create WebSocket', error);
-        this.invokeStatusCallbacks('error', error);
-        reject(error);
-        return;
-      }
-
-      this.ws.onopen = () => {
-        this.connected = true;
-        this.connecting = false;
-        this.reconnectAttempts = 0; // Reset reconnection attempts on successful connection
-        this.reconnectInterval = 3000; // Reset reconnect interval on successful connection
-        this.logger.info('WebSocket connected');
-        this.invokeStatusCallbacks('connected');
-        resolve();
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.logger.debug('Received message:', data);
-          this.invokeMessageCallbacks(data.type, data.payload);
-        } catch (error) {
-          this.logger.error('Failed to parse message:', error);
-        }
-      };
-
-      this.ws.onclose = (event) => {
-        this.connecting = false;
-        this.connected = false;
-        this.logger.warn(`WebSocket disconnected ${event.code} ${event.reason}`);
-        this.invokeStatusCallbacks('disconnected', { code: event.code, reason: event.reason });
-        this.reconnect();
-      };
-
-      this.ws.onerror = (error) => {
-        this.connecting = false;
-        this.connected = false;
-        this.logger.error('WebSocket error:', error);
-        this.invokeStatusCallbacks('error', error);
-        reject(error);
-        // Don't reconnect here, let onclose handle it
-      };
+      // Try each URL in the list until one works
+      this.tryNextUrl(allWebSocketUrls, 0, resolve, reject);
     });
   }
 
+  private tryNextUrl(urls: string[], index: number, resolve: (value: void) => void, reject: (reason?: any) => void): void {
+    if (index >= urls.length) {
+      // We've tried all URLs and none worked
+      this.connecting = false;
+      const error = new Error("Failed to connect to any WebSocket endpoint");
+      this.logger.error('All connection attempts failed', error);
+      this.invokeStatusCallbacks('error', error);
+      reject(error);
+      return;
+    }
+
+    const url = urls[index];
+    if (!url) {
+      // Skip undefined/empty URLs
+      this.tryNextUrl(urls, index + 1, resolve, reject);
+      return;
+    }
+
+    this.lastConnectionUrl = url;
+    this.logger.info(`Attempting to connect to WebSocket: ${url}`);
+    
+    try {
+      this.ws = new WebSocket(url);
+    } catch (error) {
+      // Move to the next URL if we can't even create the WebSocket
+      this.logger.error(`Failed to create WebSocket for ${url}`, error);
+      this.tryNextUrl(urls, index + 1, resolve, reject);
+      return;
+    }
+
+    // Set a timeout to catch stalled connection attempts
+    if (this.connectionAttemptTimeout) {
+      clearTimeout(this.connectionAttemptTimeout);
+    }
+    
+    this.connectionAttemptTimeout = window.setTimeout(() => {
+      this.timeoutAttempts++;
+      if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
+        this.logger.warn(`Connection attempt to ${url} timed out`);
+        if (this.timeoutAttempts >= this.maxTimeoutAttempts) {
+          this.logger.error('Max timeout attempts reached, stopping connection attempts');
+          this.connecting = false;
+          reject(new Error("Connection attempts timed out"));
+          return;
+        }
+        // Try next URL
+        if (this.ws) {
+          this.ws.close();
+          this.ws = null;
+        }
+        this.tryNextUrl(urls, index + 1, resolve, reject);
+      }
+    }, 5000);
+
+    this.ws.onopen = () => {
+      if (this.connectionAttemptTimeout) {
+        clearTimeout(this.connectionAttemptTimeout);
+        this.connectionAttemptTimeout = null;
+      }
+      
+      this.connected = true;
+      this.connecting = false;
+      this.reconnectAttempts = 0; // Reset reconnection attempts
+      this.reconnectInterval = 3000; // Reset reconnect interval
+      this.timeoutAttempts = 0; // Reset timeout attempts
+      
+      this.logger.info(`WebSocket connected to ${url}`);
+      this.invokeStatusCallbacks('connected');
+      resolve();
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        this.logger.debug('Received message:', data);
+        this.invokeMessageCallbacks(data.type, data.payload);
+      } catch (error) {
+        this.logger.error('Failed to parse message:', error);
+      }
+    };
+
+    this.ws.onclose = (event) => {
+      if (this.connectionAttemptTimeout) {
+        clearTimeout(this.connectionAttemptTimeout);
+        this.connectionAttemptTimeout = null;
+      }
+      
+      // If we were still trying to connect, try the next URL
+      if (this.connecting) {
+        this.logger.warn(`Connection to ${url} closed during connection attempt: ${event.code}`);
+        this.tryNextUrl(urls, index + 1, resolve, reject);
+        return;
+      }
+      
+      this.connecting = false;
+      this.connected = false;
+      this.logger.warn(`WebSocket disconnected ${event.code} ${event.reason}`);
+      this.invokeStatusCallbacks('disconnected', { code: event.code, reason: event.reason });
+      this.reconnect();
+    };
+
+    this.ws.onerror = (error) => {
+      this.logger.error(`WebSocket error with ${url}:`, error);
+      
+      // If we're still in the connecting phase, try the next URL
+      if (this.connecting && !this.connected) {
+        if (this.connectionAttemptTimeout) {
+          clearTimeout(this.connectionAttemptTimeout);
+          this.connectionAttemptTimeout = null;
+        }
+        
+        // Close the errored connection
+        if (this.ws) {
+          try {
+            this.ws.close();
+          } catch (e) {
+            // Ignore errors during close
+          }
+          this.ws = null;
+        }
+        
+        this.invokeStatusCallbacks('error', error);
+        this.tryNextUrl(urls, index + 1, resolve, reject);
+      } else {
+        // We were already connected but got an error
+        this.connecting = false;
+        this.connected = false;
+        this.invokeStatusCallbacks('error', error);
+        reject(error);
+      }
+    };
+  }
+
   public disconnect(): void {
+    if (this.connectionAttemptTimeout) {
+      clearTimeout(this.connectionAttemptTimeout);
+      this.connectionAttemptTimeout = null;
+    }
+    
     if (this.ws) {
-      this.ws.close();
+      try {
+        this.ws.close();
+      } catch (e) {
+        // Ignore errors during close
+      }
       this.ws = null;
       this.connected = false;
       this.connecting = false;
       this.logger.info('WebSocket disconnected');
       this.invokeStatusCallbacks('disconnected');
     }
-  }
-
-  private reconnect(): void {
-    if (this.connecting) {
-      this.logger.info('Already attempting to connect, skipping reconnect');
-      return;
-    }
-
-    // Increase the reconnection attempts
-    this.reconnectAttempts++;
-
-    // Increase the reconnect interval, but not beyond the maximum
-    this.reconnectInterval = Math.min(this.reconnectInterval * 1.5, this.maxReconnectInterval);
-
-    this.logger.info(`Attempting to reconnect in ${this.reconnectInterval}ms (attempt ${this.reconnectAttempts})`);
-    this.invokeStatusCallbacks('reconnecting', { attempt: this.reconnectAttempts, delay: this.reconnectInterval });
-    
-    setTimeout(() => {
-      this.connect()
-        .catch(() => {
-          // If connect fails, it will automatically try to reconnect
-          this.connecting = false;
-          this.connected = false;
-        });
-    }, this.reconnectInterval);
   }
 
   public send(type: string, payload: any): boolean {
@@ -233,19 +298,26 @@ class WebSocketClient {
 function getWebSocketUrls(): string[] {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const hostname = window.location.hostname;
+  const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
   
   // Try different combinations of host/port/path
   return [
     // First try the environment variable if available
     import.meta.env.VITE_WEBSOCKET_URL,
-    // Try with explicit path
+    // Try with explicit path and specified port
     `${protocol}//${hostname}:8080/gstreamer`,
     // Try without path
     `${protocol}//${hostname}:8080`,
-    // Try IP address
+    // Try IP address with explicit port
     `${protocol}//127.0.0.1:8080/gstreamer`,
-    // Try different domain
+    // Try localhost with explicit port
     `${protocol}//localhost:8080/gstreamer`,
+    // Try with the same port as the frontend
+    `${protocol}//${hostname}:${port}/gstreamer`,
+    // Try with IP and same port as frontend
+    `${protocol}//127.0.0.1:${port}/gstreamer`,
+    // Try with localhost and same port as frontend
+    `${protocol}//localhost:${port}/gstreamer`,
   ].filter(Boolean) as string[]; // Filter out undefined/null values
 }
 

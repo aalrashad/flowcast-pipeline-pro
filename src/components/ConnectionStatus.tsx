@@ -3,13 +3,14 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import wsClient, { allWebSocketUrls } from "@/services/WebSocketClient";
-import { Wifi, WifiOff, AlertTriangle, Terminal } from "lucide-react";
+import { Wifi, WifiOff, AlertTriangle, Terminal, Loader2 } from "lucide-react";
 
 export function ConnectionStatus() {
   const [status, setStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'reconnecting'>('connecting');
   const [lastAttempt, setLastAttempt] = useState<Date | null>(null);
   const [attempts, setAttempts] = useState(0);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [currentUrl, setCurrentUrl] = useState<string>(wsClient.getDebugConnectionUrl());
 
   useEffect(() => {
     const handleStatus = (connectionStatus: string, error?: any) => {
@@ -17,12 +18,15 @@ export function ConnectionStatus() {
         setStatus('connected');
         setAttempts(0);
         setErrorDetails(null);
+        setCurrentUrl(wsClient.getDebugConnectionUrl());
       } else if (connectionStatus === 'connecting') {
         setStatus('connecting');
         setLastAttempt(new Date());
+        setCurrentUrl(wsClient.getDebugConnectionUrl());
       } else if (connectionStatus === 'reconnecting') {
         setStatus('reconnecting');
         setLastAttempt(new Date());
+        setCurrentUrl(wsClient.getDebugConnectionUrl());
         if (error?.attempt) {
           setAttempts(error.attempt);
         } else {
@@ -32,6 +36,8 @@ export function ConnectionStatus() {
         setStatus('disconnected');
         setLastAttempt(new Date());
         setAttempts(prev => prev + 1);
+        setCurrentUrl(wsClient.getDebugConnectionUrl());
+        
         // Store error details if available
         if (error?.message) {
           setErrorDetails(error.message);
@@ -41,6 +47,8 @@ export function ConnectionStatus() {
       } else {
         setStatus('disconnected');
         setLastAttempt(new Date());
+        setCurrentUrl(wsClient.getDebugConnectionUrl());
+        
         // For close events, show the close code
         if (error?.code) {
           setErrorDetails(`Close code: ${error.code}`);
@@ -53,6 +61,9 @@ export function ConnectionStatus() {
 
     // Initialize attempts from WebSocket client
     setAttempts(wsClient.getReconnectAttempts());
+    
+    // Update current URL
+    setCurrentUrl(wsClient.getDebugConnectionUrl());
 
     return () => {
       unsubscribe();
@@ -83,11 +94,11 @@ export function ConnectionStatus() {
                 </>
               ) : status === 'connecting' ? (
                 <>
-                  <Wifi className="w-3 h-3 animate-pulse" /> Connecting
+                  <Loader2 className="w-3 h-3 animate-spin" /> Connecting
                 </>
               ) : status === 'reconnecting' ? (
                 <>
-                  <Wifi className="w-3 h-3 animate-pulse" /> Reconnecting
+                  <Loader2 className="w-3 h-3 animate-spin" /> Reconnecting
                 </>
               ) : (
                 <>
@@ -97,7 +108,7 @@ export function ConnectionStatus() {
             </Badge>
           </div>
         </TooltipTrigger>
-        <TooltipContent>
+        <TooltipContent className="w-80 max-w-[90vw]">
           <div className="text-xs">
             <p>Backend connection: <strong>{status}</strong></p>
             {status !== 'connected' && (
@@ -114,23 +125,24 @@ export function ConnectionStatus() {
                 )}
                 <p className="mt-1">Check if the backend server is running.</p>
                 
-                {possiblePortConflict && (
-                  <div className="mt-2 border-t border-gray-700 pt-2">
-                    <p className="text-yellow-300 flex items-center">
-                      <Terminal className="h-3 w-3 mr-1" /> Connection Info:
-                    </p>
-                    <p className="mt-1">Backend should be listening on all interfaces (0.0.0.0).</p>
-                    <p className="mt-1">Current connection URL: <code className="bg-black/30 px-1 py-0.5 rounded">{wsClient.getDebugConnectionUrl()}</code></p>
-                    <p className="mt-1">Tried URLs:</p>
-                    <div className="mt-1 max-h-20 overflow-y-auto text-[10px]">
-                      {allWebSocketUrls.map((url, idx) => (
-                        <code key={idx} className="bg-black/30 px-1 py-0.5 rounded block mb-1">{url}</code>
-                      ))}
-                    </div>
-                    <p className="mt-1">If still having issues, try running:</p>
-                    <code className="bg-black/30 px-1 py-0.5 rounded block mt-1">GSTREAMER_WS_PORT=8081 ./start_server.sh</code>
-                  </div>
-                )}
+                <div className="mt-2 border-t border-gray-700 pt-2">
+                  <p className="text-yellow-300 flex items-center">
+                    <Terminal className="h-3 w-3 mr-1" /> Connection Info:
+                  </p>
+                  <p className="mt-1">Backend should be running on port 8080 and listening on all interfaces (0.0.0.0).</p>
+                  <p className="mt-1">Current URL: <code className="bg-black/30 px-1 py-0.5 rounded">{currentUrl}</code></p>
+                  <p className="mt-1">Common issues:</p>
+                  <ul className="list-disc ml-5 mt-1">
+                    <li>Backend server not running</li>
+                    <li>Backend server not listening on all interfaces (0.0.0.0)</li>
+                    <li>Firewall blocking connections</li>
+                    <li>WebSocket server on a different port</li>
+                  </ul>
+                  <p className="mt-1">Try running:</p>
+                  <pre className="bg-black/30 px-2 py-1 rounded mt-1 overflow-x-auto">GSTREAMER_WS_HOST=0.0.0.0 python server.py</pre>
+                  <p className="mt-1">Or use the start script with the recreate option:</p>
+                  <pre className="bg-black/30 px-2 py-1 rounded mt-1 overflow-x-auto">./start_server.sh --recreate-venv</pre>
+                </div>
               </>
             )}
           </div>
