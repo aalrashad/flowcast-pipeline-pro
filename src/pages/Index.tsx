@@ -69,9 +69,12 @@ const Index = () => {
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Connection Error</AlertTitle>
             <AlertDescription>
-              <p className="mb-2">The GStreamer backend server is not connected. Make sure it's running using <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh</code></p>
+              <p className="mb-2">
+                The GStreamer backend server is not connected. Make sure it's running using{" "}
+                <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh</code>
+              </p>
               
-              <div className="flex gap-2 mt-2">
+              <div className="flex flex-wrap gap-2 mt-2">
                 <Button size="sm" variant="outline" onClick={manualReconnect}>
                   Try Reconnect
                 </Button>
@@ -93,9 +96,22 @@ const Index = () => {
                     <li>Verify the backend server is running using <code className="bg-black/30 px-1 py-0.5 rounded">./start_server.sh</code></li>
                     <li>Check the terminal output for any errors in the Python server</li>
                     <li>Ensure GStreamer and required Python packages are installed</li>
-                    <li>Verify that port 8080 is not blocked by a firewall</li>
+                    <li>Note that the frontend now runs on port 3000 and the backend on port 8080</li>
                   </ol>
 
+                  <div className="text-amber-300 border-l-2 border-amber-400 pl-2 mt-3">
+                    <p className="font-medium flex items-center">
+                      <Terminal className="h-4 w-4 mr-1" /> Port Configuration
+                    </p>
+                    <p className="mt-1">
+                      The frontend now runs on port 3000, while the backend runs on port 8080.
+                    </p>
+                    <ul className="list-disc pl-5 mt-1 space-y-1">
+                      <li>Access the app at: <code className="bg-black/30 px-1 py-0.5 rounded">http://localhost:3000</code></li>
+                      <li>Make sure the backend is running on port 8080</li>
+                    </ul>
+                  </div>
+                  
                   {isSecurityIssue && (
                     <div className="text-yellow-300 border-l-2 border-yellow-400 pl-2 mt-3">
                       <p className="font-medium flex items-center">
@@ -134,6 +150,6 @@ const Index = () => {
       </div>
     </TooltipProvider>
   );
-};
+}
 
 export default Index;

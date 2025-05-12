@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -117,14 +116,12 @@ export function ConnectionStatus() {
                 {possiblePortConflict && (
                   <div className="mt-2 border-t border-gray-700 pt-2">
                     <p className="text-yellow-300 flex items-center">
-                      <Terminal className="h-3 w-3 mr-1" /> Possible issue detected:
+                      <Terminal className="h-3 w-3 mr-1" /> Port configuration:
                     </p>
-                    <p className="mt-1">The frontend server is running on port 8080, which conflicts with the backend.</p>
-                    <p className="mt-1">Try one of these solutions:</p>
-                    <ul className="list-disc pl-5 mt-1 space-y-1">
-                      <li>Change Vite frontend port: <code className="bg-black/30 px-1 py-0.5 rounded">npm run dev -- --port 3000</code></li>
-                      <li>Change the backend port: <code className="bg-black/30 px-1 py-0.5 rounded">GSTREAMER_WS_PORT=8081 ./start_server.sh</code></li>
-                    </ul>
+                    <p className="mt-1">The frontend now runs on port 3000, and the backend on port 8080.</p>
+                    <p className="mt-1">Access the app at: <code className="bg-black/30 px-1 py-0.5 rounded">http://localhost:3000</code></p>
+                    <p className="mt-1">If needed, you can change the backend port:</p>
+                    <code className="bg-black/30 px-1 py-0.5 rounded block mt-1">GSTREAMER_WS_PORT=8081 ./start_server.sh</code>
                   </div>
                 )}
               </>
