@@ -1,4 +1,3 @@
-
 /**
  * GStreamer Service
  * Provides an interface to interact with GStreamer pipelines via WebSocket

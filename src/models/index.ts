@@ -11,8 +11,8 @@ export interface HealthCheckResult {
   healthy: boolean;
   status: string;
   timestamp: Date;
+  duration: number; // Changed from optional to required
   error?: string;
-  duration?: number;
   consecutiveFailures?: number;
 }
 

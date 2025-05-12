@@ -146,8 +146,9 @@ class WebSocketClient {
   }
 }
 
+// Fix: Use import.meta.env instead of process.env
 export const wsClient = new WebSocketClient(
-  process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:8080',
+  import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8080',
   new Logger('WebSocketClient')
 );
 
