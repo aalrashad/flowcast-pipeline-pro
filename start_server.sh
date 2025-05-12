@@ -19,13 +19,25 @@ if [ ! -d "venv" ]; then
     python3 -m venv venv || { echo "Failed to create virtual environment. Make sure python3-venv is installed."; exit 1; }
 fi
 
+# Remove the virtual environment if it exists but is causing issues
+if [ "$1" == "--recreate-venv" ]; then
+    echo "Recreating Python virtual environment..."
+    rm -rf venv
+    python3 -m venv venv || { echo "Failed to recreate virtual environment. Make sure python3-venv is installed."; exit 1; }
+fi
+
 # Activate virtual environment
 echo "Activating virtual environment..."
 source venv/bin/activate || { echo "Failed to activate virtual environment."; exit 1; }
 
 # Install required packages in virtual environment
 echo "Installing required Python packages..."
-pip install -r requirements.txt || { echo "Failed to install required packages."; exit 1; }
+pip install --no-cache-dir -r requirements.txt || { 
+    echo "Failed to install required packages."
+    echo "If facing 'externally-managed-environment' error, try running with --recreate-venv option."
+    deactivate
+    exit 1
+}
 
 # Start the server
 echo "Starting GStreamer WebSocket server..."

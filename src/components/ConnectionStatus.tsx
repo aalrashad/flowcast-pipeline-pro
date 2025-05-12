@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -116,11 +117,11 @@ export function ConnectionStatus() {
                 {possiblePortConflict && (
                   <div className="mt-2 border-t border-gray-700 pt-2">
                     <p className="text-yellow-300 flex items-center">
-                      <Terminal className="h-3 w-3 mr-1" /> Port configuration:
+                      <Terminal className="h-3 w-3 mr-1" /> Port Configuration:
                     </p>
-                    <p className="mt-1">The frontend now runs on port 3000, and the backend on port 8080.</p>
-                    <p className="mt-1">Access the app at: <code className="bg-black/30 px-1 py-0.5 rounded">http://localhost:3000</code></p>
-                    <p className="mt-1">If needed, you can change the backend port:</p>
+                    <p className="mt-1">Both frontend and backend are running on port 8080.</p>
+                    <p className="mt-1">Access the app at: <code className="bg-black/30 px-1 py-0.5 rounded">http://localhost:8080</code></p>
+                    <p className="mt-1">If you're having issues, you can change the backend port:</p>
                     <code className="bg-black/30 px-1 py-0.5 rounded block mt-1">GSTREAMER_WS_PORT=8081 ./start_server.sh</code>
                   </div>
                 )}
