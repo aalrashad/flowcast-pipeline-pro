@@ -11,7 +11,7 @@ export function getWebSocketUrls(): string[] {
   return [
     // First try the environment variable if available
     import.meta.env.VITE_WEBSOCKET_URL,
-    // Backend should be on port 8080 regardless of frontend port
+    // Try with explicit path
     `${protocol}//${hostname}:8080/gstreamer`,
     // Try without path
     `${protocol}//${hostname}:8080`,

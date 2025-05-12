@@ -463,6 +463,13 @@ def run_glib_mainloop():
     mainloop = GLib.MainLoop()
     mainloop.run()
 
+# Function to check if a request path matches our WebSocket path
+async def path_filter(path, request_headers):
+    ws_path = os.environ.get("GSTREAMER_WS_PATH", "/gstreamer")
+    if path == ws_path:
+        return None
+    return 404, {}, b'Not Found'
+
 async def main():
     """Main function to start the server"""
     global mainloop_thread
@@ -480,14 +487,8 @@ async def main():
     # Start periodic stats updates
     stats_task = asyncio.create_task(send_stats_updates())
     
-    # Start WebSocket server - Fixed to use the correct syntax for websockets.serve
-    # The 'path' parameter needs to be handled in websockets.serve, not in create_server
-    async with websockets.serve(
-        handle_websocket, 
-        host, 
-        port, 
-        process_request=lambda path, request_headers: None if path == ws_path else (404, {}, b'Not Found')
-    ):
+    # Start WebSocket server with proper path filtering
+    async with websockets.serve(handle_websocket, host, port, process_request=path_filter):
         # Handle signals for graceful shutdown
         loop = asyncio.get_event_loop()
         for signame in ('SIGINT', 'SIGTERM'):

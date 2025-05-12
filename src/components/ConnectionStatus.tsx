@@ -129,14 +129,15 @@ export function ConnectionStatus() {
                   <p className="text-yellow-300 flex items-center">
                     <Terminal className="h-3 w-3 mr-1" /> Connection Info:
                   </p>
-                  <p className="mt-1">Backend should be running on port 8080 and frontend now runs on port 3000.</p>
+                  <p className="mt-1">Both the frontend and backend use port 8080.</p>
                   <p className="mt-1">Current URL: <code className="bg-black/30 px-1 py-0.5 rounded">{currentUrl}</code></p>
                   <p className="mt-1">Common issues:</p>
                   <ul className="list-disc ml-5 mt-1">
                     <li>Backend server not running</li>
                     <li>Backend server not listening on all interfaces (0.0.0.0)</li>
                     <li>Firewall blocking connections</li>
-                    <li>WebSocket server on a different port</li>
+                    <li>WebSocket server on a different path (should be /gstreamer)</li>
+                    <li>WebSocket handshake failing</li>
                   </ul>
                   <p className="mt-1">Try running:</p>
                   <pre className="bg-black/30 px-2 py-1 rounded mt-1 overflow-x-auto">GSTREAMER_WS_HOST=0.0.0.0 python server.py</pre>
