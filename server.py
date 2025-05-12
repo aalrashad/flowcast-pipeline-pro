@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 import asyncio
 import json
@@ -474,15 +473,21 @@ async def main():
     # Start WebSocket server
     port = int(os.environ.get("GSTREAMER_WS_PORT", 8080))
     host = os.environ.get("GSTREAMER_WS_HOST", "localhost")
-    path = os.environ.get("GSTREAMER_WS_PATH", "/gstreamer")
+    ws_path = os.environ.get("GSTREAMER_WS_PATH", "/gstreamer")
     
-    logger.info(f"Starting WebSocket server on {host}:{port}{path}")
+    logger.info(f"Starting WebSocket server on {host}:{port}{ws_path}")
     
     # Start periodic stats updates
     stats_task = asyncio.create_task(send_stats_updates())
     
-    # Start WebSocket server
-    async with websockets.serve(handle_websocket, host, port, path=path):
+    # Start WebSocket server - Fixed to use the correct syntax for websockets.serve
+    # The 'path' parameter needs to be handled in websockets.serve, not in create_server
+    async with websockets.serve(
+        handle_websocket, 
+        host, 
+        port, 
+        process_request=lambda path, request_headers: None if path == ws_path else (404, {}, b'Not Found')
+    ):
         # Handle signals for graceful shutdown
         loop = asyncio.get_event_loop()
         for signame in ('SIGINT', 'SIGTERM'):

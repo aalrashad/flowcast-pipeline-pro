@@ -84,6 +84,7 @@ fi
 # Set environment variables for server to listen on all interfaces
 export GSTREAMER_WS_HOST="0.0.0.0"  # Listen on all interfaces
 export GSTREAMER_WS_PORT="8080"     # Use port 8080
+export GSTREAMER_WS_PATH="/gstreamer"  # WebSocket path
 
 echo ""
 echo "======================================"
