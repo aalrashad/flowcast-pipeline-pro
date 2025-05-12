@@ -1,3 +1,4 @@
+
 import { Logger } from '../utils/Logger';
 
 type StatusCallback = (status: string, error?: any) => void;
@@ -18,6 +19,7 @@ class WebSocketClient {
   private connectionAttemptTimeout: number | null = null;
   private maxTimeoutAttempts: number = 3;
   private timeoutAttempts: number = 0;
+  private reconnectTimeoutId: number | null = null;
 
   constructor(url: string, logger: Logger) {
     this.url = url;
@@ -179,10 +181,40 @@ class WebSocketClient {
     };
   }
 
+  // Implement the reconnect method that was missing
+  private reconnect(): void {
+    // Clear any existing reconnect timeout
+    if (this.reconnectTimeoutId !== null) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+    
+    // Increment reconnection attempts and adjust interval
+    this.reconnectAttempts++;
+    const delay = Math.min(this.reconnectInterval * Math.pow(1.5, Math.min(this.reconnectAttempts, 10) - 1), this.maxReconnectInterval);
+    
+    this.logger.info(`Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay}ms`);
+    this.invokeStatusCallbacks('reconnecting', { attempt: this.reconnectAttempts });
+    
+    // Schedule the reconnection attempt
+    this.reconnectTimeoutId = window.setTimeout(() => {
+      this.logger.info(`Attempting to reconnect (attempt ${this.reconnectAttempts})`);
+      this.connect().catch(error => {
+        this.logger.error(`Reconnection attempt ${this.reconnectAttempts} failed`, error);
+      });
+    }, delay);
+  }
+
   public disconnect(): void {
     if (this.connectionAttemptTimeout) {
       clearTimeout(this.connectionAttemptTimeout);
       this.connectionAttemptTimeout = null;
+    }
+    
+    // Clear any reconnect timeout
+    if (this.reconnectTimeoutId !== null) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
     }
     
     if (this.ws) {
