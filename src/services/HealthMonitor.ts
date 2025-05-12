@@ -8,32 +8,75 @@ export class HealthMonitor {
   private consecutiveFailures = 0;
   private lastSuccessfulCheck: Date | null = null;
   private isShuttingDown = false;
+  private healthCheckInterval: number;
+  private logger: Logger;
+  private healthCheckService: HealthCheckService;
+  private metricsCollector: MetricsCollector;
+  private streamCallbacks: Map<string, (streamId: string, healthData: any) => void> = new Map();
+  private registeredStreams: Set<string> = new Set();
+  private intervalId: NodeJS.Timeout | null = null;
 
   constructor(
-    private readonly healthCheckService: HealthCheckService,
-    private readonly metricsCollector: MetricsCollector,
-    private readonly logger: Logger,
-    private config: HealthCheckConfig
+    healthCheckInterval: number = 5000,
+    logger: Logger = new Logger('HealthMonitor'),
+    healthCheckService?: HealthCheckService,
+    metricsCollector?: MetricsCollector
   ) {
-    this.config = {
-      interval: this.sanitizeNumber(config.interval, 1000),
-      timeout: this.sanitizeNumber(config.timeout, 100),
-      failureThreshold: this.sanitizeNumber(config.failureThreshold ?? 3, 1),
-      successThreshold: this.sanitizeNumber(config.successThreshold ?? 1, 1),
-      enabled: config.enabled ?? true,
-      ...config
-    };
-    this.validateConfig();
+    this.healthCheckInterval = healthCheckInterval;
+    this.logger = logger;
+    this.healthCheckService = healthCheckService || new HealthCheckService(this.logger);
+    this.metricsCollector = metricsCollector || new MetricsCollector(this.logger);
   }
 
   /**
    * Starts periodic health monitoring
    */
-  public async startMonitoring(): Promise<void> {
-    if (this.config.enabled) {
-      await this.executeHealthCheck();
-      setInterval(() => this.executeHealthCheck(), this.config.interval);
+  public start(callback: (streamId: string, healthData: any) => void): void {
+    if (this.intervalId) {
+      this.logger.warn('Health monitoring already started');
+      return;
     }
+
+    this.logger.info(`Starting health monitoring with interval ${this.healthCheckInterval}ms`);
+    
+    // Execute an initial health check
+    this.executeHealthCheck();
+    
+    // Set up interval for periodic health checks
+    this.intervalId = setInterval(() => {
+      this.executeHealthCheck();
+      
+      // Notify each registered stream
+      this.registeredStreams.forEach(streamId => {
+        const healthData = {
+          status: this.consecutiveFailures > 0 ? 'unhealthy' : 'healthy',
+          metrics: this.metricsCollector.getAllMetrics(),
+          timestamp: new Date()
+        };
+        
+        try {
+          callback(streamId, healthData);
+        } catch (error) {
+          this.logger.error(`Error notifying stream ${streamId} about health status`, error);
+        }
+      });
+    }, this.healthCheckInterval);
+  }
+  
+  /**
+   * Register a stream for health monitoring
+   */
+  public registerStream(streamId: string): void {
+    this.registeredStreams.add(streamId);
+    this.logger.debug(`Registered stream ${streamId} for health monitoring`);
+  }
+  
+  /**
+   * Unregister a stream from health monitoring
+   */
+  public unregisterStream(streamId: string): void {
+    this.registeredStreams.delete(streamId);
+    this.logger.debug(`Unregistered stream ${streamId} from health monitoring`);
   }
 
   /**
@@ -50,7 +93,7 @@ export class HealthMonitor {
 
     const startTime = Date.now();
     try {
-      const result = await this.healthCheckService.checkHealth(this.config.timeout);
+      const result = await this.healthCheckService.checkHealth(5000);
       const duration = Date.now() - startTime;
 
       this.handleSuccess(duration);
@@ -70,28 +113,14 @@ export class HealthMonitor {
   }
 
   /**
-   * Updates monitoring configuration with validation
-   */
-  public updateConfig(config: Partial<HealthCheckConfig>): void {
-    const newConfig = {
-      ...this.config,
-      interval: config.interval ? this.sanitizeNumber(config.interval, 1000) : this.config.interval,
-      timeout: config.timeout ? this.sanitizeNumber(config.timeout, 100) : this.config.timeout,
-      failureThreshold: config.failureThreshold ? this.sanitizeNumber(config.failureThreshold, 1) : this.config.failureThreshold,
-      successThreshold: config.successThreshold ? this.sanitizeNumber(config.successThreshold, 1) : this.config.successThreshold,
-      enabled: config.enabled ?? this.config.enabled
-    };
-
-    this.validateConfig(newConfig);
-    this.config = newConfig;
-    this.logger.info('Health monitor configuration updated');
-  }
-
-  /**
    * Graceful shutdown indicator
    */
   public shutdown(): void {
     this.isShuttingDown = true;
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
     this.logger.info('Health monitor shutting down');
   }
 
@@ -108,11 +137,6 @@ export class HealthMonitor {
     this.consecutiveFailures++;
     this.metricsCollector.setGauge('health.checks.consecutive_failures', this.consecutiveFailures);
     this.metricsCollector.setGauge('health.check.duration', duration);
-
-    if (this.consecutiveFailures >= this.config.failureThreshold) {
-      this.metricsCollector.incrementCounter('health.checks.critical_failure');
-      this.logger.error('Critical health check failure threshold reached');
-    }
 
     return {
       healthy: false,
@@ -138,42 +162,5 @@ export class HealthMonitor {
     } catch (error) {
       this.logger.error('Failed to record health metrics', error instanceof Error ? error : new Error(String(error)));
     }
-  }
-
-  private validateConfig(config?: HealthCheckConfig): void {
-    const cfg = config || this.config;
-    
-    try {
-      // Validate interval and timeout relationship
-      if (cfg.timeout >= cfg.interval) {
-        throw new Error(`Timeout (${cfg.timeout}ms) must be less than interval (${cfg.interval}ms)`);
-      }
-
-      // Validate thresholds
-      if (cfg.failureThreshold <= 0) {
-        throw new Error(`Failure threshold must be positive`);
-      }
-      if (cfg.successThreshold <= 0) {
-        throw new Error(`Success threshold must be positive`);
-      }
-    } catch (error) {
-      throw new Error(`Invalid configuration: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  private sanitizeNumber(value: string | number, min = 0, max = Infinity): number {
-    const num = typeof value === 'string' ? Number(value) : value;
-    
-    if (isNaN(num)) {
-      throw new Error(`Invalid number value: ${value}`);
-    }
-    if (num < min) {
-      throw new Error(`Value must be >= ${min}, got ${num}`);
-    }
-    if (num > max) {
-      throw new Error(`Value must be <= ${max}, got ${num}`);
-    }
-    
-    return num;
   }
 }

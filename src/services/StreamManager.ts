@@ -1,4 +1,3 @@
-
 /**
  * Stream Manager Service
  * Centralized service for managing multiple media streams and their lifecycles
@@ -11,6 +10,7 @@ import gstreamerService, { GstPipeline, GstPipelineState } from './GstreamerServ
 import { PipelineFactory } from './PipelineFactory';
 import { HealthMonitor } from './HealthMonitor';
 import { ResourceAllocator } from './ResourceAllocator';
+import { Logger } from '../utils/Logger';
 
 // Stream type definitions
 export interface Stream {
@@ -75,8 +75,10 @@ class StreamManagerService {
   private healthMonitor: HealthMonitor;
   private resourceAllocator: ResourceAllocator;
   private statusCallbacks: Map<string, (stream: Stream) => void> = new Map();
+  private logger: Logger;
   
   constructor(config?: StreamManagerConfig) {
+    this.logger = new Logger('StreamManager');
     this.config = {
       maxStreams: config?.maxStreams || 10,
       resourceLimits: {

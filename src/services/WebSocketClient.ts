@@ -1,3 +1,4 @@
+
 import { Logger } from '../utils/Logger';
 
 type StatusCallback = (status: string, error?: any) => void;
@@ -47,7 +48,7 @@ class WebSocketClient {
 
       this.ws.onclose = (event) => {
         this.connecting = false;
-        thisconnected = false;
+        this.connected = false;
         this.logger.warn('WebSocket disconnected', event.code, event.reason);
         this.invokeStatusCallbacks('disconnected', { code: event.code, reason: event.reason });
         this.reconnect();
@@ -70,7 +71,7 @@ class WebSocketClient {
       this.ws = null;
       this.connected = false;
       this.connecting = false;
-      thislogger.info('WebSocket disconnected');
+      this.logger.info('WebSocket disconnected');
       this.invokeStatusCallbacks('disconnected');
     }
   }
