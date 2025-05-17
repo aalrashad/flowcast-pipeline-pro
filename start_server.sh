@@ -15,11 +15,17 @@ fi
 
 # Process command line arguments
 RECREATE_VENV=0
+VERBOSE=0
 for arg in "$@"; do
     case $arg in
         --recreate-venv)
             RECREATE_VENV=1
             echo "Will recreate virtual environment..."
+            shift
+            ;;
+        --verbose)
+            VERBOSE=1
+            echo "Enabling verbose logging..."
             shift
             ;;
         *)
@@ -86,12 +92,20 @@ export GSTREAMER_WS_HOST="0.0.0.0"  # Listen on all interfaces
 export GSTREAMER_WS_PORT="8080"     # Use port 8080
 export GSTREAMER_WS_PATH="/gstreamer"  # WebSocket path
 
+if [ $VERBOSE -eq 1 ]; then
+    export GSTREAMER_LOG_LEVEL="DEBUG"
+    echo "Log level set to DEBUG"
+else
+    export GSTREAMER_LOG_LEVEL="INFO"  # Default log level
+fi
+
 echo ""
 echo "======================================"
 echo "Starting GStreamer WebSocket server..."
 echo "Listening on all interfaces (0.0.0.0)"
 echo "Port: 8080"
 echo "WebSocket path: /gstreamer"
+echo "Log level: $GSTREAMER_LOG_LEVEL"
 echo "======================================"
 echo ""
 

@@ -6,6 +6,7 @@ import os
 import signal
 import sys
 import gi
+import threading
 
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
@@ -457,8 +458,8 @@ async def handle_websocket(websocket, path):
         # Unregister client
         clients.remove(websocket)
 
-def run_glib_mainloop():
-    """Run the GLib mainloop in a separate thread"""
+def mainloop_thread_func():
+    """Function to run the GLib mainloop in a separate thread"""
     global mainloop
     mainloop = GLib.MainLoop()
     mainloop.run()
@@ -466,48 +467,58 @@ def run_glib_mainloop():
 # Function to check if a request path matches our WebSocket path
 async def path_filter(path, request_headers):
     ws_path = os.environ.get("GSTREAMER_WS_PATH", "/gstreamer")
-    if path == ws_path:
+    # Log the path for debugging
+    logging.debug(f"WebSocket request path: {path}, expected: {ws_path}")
+    
+    # Check if the path matches exactly or if it's a root path when no path is configured
+    if path == ws_path or (ws_path == "/" and path == ""):
         return None
-    return 404, {}, b'Not Found'
+    
+    # Otherwise return a 404
+    logging.warning(f"Rejected WebSocket connection to invalid path: {path}")
+    return 404, {"Content-Type": "text/plain"}, b'Not Found - WebSocket endpoint is at ' + ws_path.encode()
 
 async def main():
     """Main function to start the server"""
     global mainloop_thread
     
-    # Start GLib mainloop in a separate thread
-    mainloop_thread = asyncio.get_event_loop().run_in_executor(None, run_glib_mainloop)
-    
-    # Start WebSocket server
-    port = int(os.environ.get("GSTREAMER_WS_PORT", 8080))
-    host = os.environ.get("GSTREAMER_WS_HOST", "localhost")
+    # Get host and port from environment variables or use defaults
+    host = os.environ.get("GSTREAMER_WS_HOST", "0.0.0.0")
+    port = int(os.environ.get("GSTREAMER_WS_PORT", "8080"))
     ws_path = os.environ.get("GSTREAMER_WS_PATH", "/gstreamer")
     
-    logger.info(f"Starting WebSocket server on {host}:{port}{ws_path}")
+    logging.info(f"Starting WebSocket server on {host}:{port}{ws_path}")
+    
+    # Start GStreamer main loop in a separate thread
+    mainloop_thread = threading.Thread(target=mainloop_thread_func)
+    mainloop_thread.daemon = True
+    mainloop_thread.start()
     
     # Start periodic stats updates
     stats_task = asyncio.create_task(send_stats_updates())
     
-    # Start WebSocket server with proper path filtering
-    async with websockets.serve(handle_websocket, host, port, process_request=path_filter):
+    # Start WebSocket server with proper path filtering and increased max_size for larger messages
+    async with websockets.serve(
+        handle_websocket, 
+        host, 
+        port, 
+        process_request=path_filter,
+        max_size=10_485_760,  # Increase max message size to 10MB
+        ping_interval=30,      # Send ping every 30 seconds
+        ping_timeout=10        # Wait 10 seconds for pong before closing
+    ):
         # Handle signals for graceful shutdown
         loop = asyncio.get_event_loop()
         for signame in ('SIGINT', 'SIGTERM'):
             loop.add_signal_handler(
                 getattr(signal, signame),
-                lambda: asyncio.ensure_future(shutdown())
+                lambda: asyncio.create_task(shutdown(loop, stats_task))
             )
         
-        logger.info(f"Server started. Press Ctrl+C to stop.")
-        try:
-            await asyncio.Future()  # Run forever
-        finally:
-            stats_task.cancel()
-            try:
-                await stats_task
-            except asyncio.CancelledError:
-                logger.info("Stats task cancelled.")
+        logging.info(f"WebSocket server started on ws://{host}:{port}{ws_path}")
+        await asyncio.Future()  # Run forever
 
-async def shutdown():
+async def shutdown(loop, stats_task):
     """Shutdown the server gracefully"""
     logger.info("Shutting down...")
     
@@ -526,7 +537,7 @@ async def shutdown():
         await asyncio.gather(*[client.close() for client in clients])
     
     # Exit
-    asyncio.get_event_loop().stop()
+    loop.stop()
 
 if __name__ == "__main__":
     try:
