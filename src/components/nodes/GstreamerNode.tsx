@@ -90,6 +90,11 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
         return <RefreshCw className="w-3 h-3 mr-1 animate-spin" />;
       case 'error':
         return <AlertCircle className="w-3 h-3 mr-1" />;
+      case 'playing':
+      case 'receiving':
+        return <Play className="w-3 h-3 mr-1" />;
+      case 'paused':
+        return <Square className="w-3 h-3 mr-1" />;
       default:
         return null;
     }
@@ -103,12 +108,14 @@ const GstreamerNode = ({ id, data, selected }: GstreamerNodeProps) => {
     }
     
     if (data.onStart) {
+      toast.info(`Starting pipeline: ${label}`);
       data.onStart();
     }
   };
   
   const handleStop = () => {
     if (data.onStop) {
+      toast.info(`Stopping pipeline: ${label}`);
       data.onStop();
     }
   };

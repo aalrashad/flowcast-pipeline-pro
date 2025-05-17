@@ -108,6 +108,8 @@ echo "WebSocket path: /gstreamer"
 echo "Log level: $GSTREAMER_LOG_LEVEL"
 echo "======================================"
 echo ""
+echo "Connect at: ws://localhost:8080/gstreamer"
+echo ""
 
 # Start the server
 python server.py
